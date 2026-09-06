@@ -33,8 +33,15 @@ it — the info label, the toolbar's two capsules, the gear, the toast, the edit
 panel, the colour picker, the long-text editor — so the page ghosts through
 and the chrome reads as one family laid over it rather than as boxes stuck on.
 
-There is no mascot. The extension icon is the mark; until the author draws
-one, `assets/icon.svg` is a placeholder that says so.
+There is no mascot. The extension icon is the mark: a cream hand pointing
+up and to the right, with a vermilion cuff — the two colours of the identity
+and nothing else, no face. The drawing is `assets/icon.png`, at 1254px on a
+transparent ground. It ships as two sets, named for the browser they are
+drawn for, not for Pointee's theme: on a light toolbar the cream hand is next
+to invisible, so the light set draws a 1px ink line around it; on a dark
+toolbar the line would be a smudge, so the dark set is the drawing as it is.
+`icons/generate-icons.mjs` makes both, and `background.js` swaps them by the
+colour scheme the pages report — Chrome's manifest can name only one.
 
 ## 2. Type
 

@@ -278,6 +278,15 @@ const railEl = document.getElementById("preview-rail");
 const vigEl = document.getElementById("measure-vig");
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
+// The toolbar icon follows the browser's scheme (see background.js). Pages
+// report it as they load; this page reports it too, so a visit here puts the
+// icon right even when no page has loaded since the OS flipped.
+function reportColorScheme() {
+  chrome.runtime.sendMessage({ type: "COLOR_SCHEME", dark: darkQuery.matches }).catch(() => {});
+}
+reportColorScheme();
+darkQuery.addEventListener("change", reportColorScheme);
+
 let current = DEFAULT_THEME;
 const savedTimers = new Map();
 

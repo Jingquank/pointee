@@ -15,6 +15,11 @@ Cursor and Codex are examples in the README, never part of the name, the
 chrome, or the payload.
 _Avoid_: Claude Code Probe, the probe — the name until 2.0.
 
+**Icon set** — the toolbar icon in the version drawn for the *browser's* mode:
+the light set has an ink line around the cream hand, the dark set is the
+drawing bare. Named for the browser, not the theme — Pointee's own palette can
+be any of the roster while the browser is either.
+
 ## Modes
 
 **Point Mode** — the extension is switched on for a tab. Hovering outlines

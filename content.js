@@ -223,6 +223,20 @@
     if (themePref === "system" && probeActive) applyTheme();
   });
 
+  // The toolbar icon follows the browser, not the theme setting: a light
+  // browser gets the hand with its ink line, a dark one the drawing as it is.
+  // A service worker has no matchMedia, so each page reports the scheme it
+  // sees and the worker sets the icon from that (see background.js). Once at
+  // load and again whenever the OS flips; the worker ignores repeats. Guarded
+  // because the same file runs in the test harness, outside an extension.
+  function reportColorScheme() {
+    try {
+      chrome.runtime?.sendMessage?.({ type: "COLOR_SCHEME", dark: darkQuery.matches })?.catch?.(() => {});
+    } catch { /* not running as an extension */ }
+  }
+  reportColorScheme();
+  darkQuery.addEventListener("change", reportColorScheme);
+
   // ===== Selection layout =====
   // Where the toolbar sits relative to the info label — the one preference
   // that changes the *shape* of the selection chrome rather than a value in
