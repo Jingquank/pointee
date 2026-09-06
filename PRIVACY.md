@@ -131,4 +131,4 @@ If this privacy policy is updated, the changes will be posted to this page with 
 ## Contact
 
 If you have questions about this privacy policy, please open an issue at:
-https://github.com/Jingquank/Claude-Code-Probe/issues
+https://github.com/Jingquank/pointee/issues

@@ -19,8 +19,8 @@ the pointer it copies.
 ### From source
 
 ```sh
-git clone https://github.com/Jingquank/Claude-Code-Probe.git
-cd Claude-Code-Probe
+git clone https://github.com/Jingquank/pointee.git
+cd pointee
 npm install
 ```
 
@@ -305,7 +305,7 @@ node test/edit-color.mjs                 # picker colour maths
 node test/edit-deltas.mjs                # what the Edit panel copies
 node test/edit-audit.mjs                 # host-page writes stay in one place
 node test/tether.mjs                     # tether geometry and panel attachment
-node icons/generate-icons.mjs            # icons/ from assets/icon.svg, via headless Chromium
+node icons/generate-icons.mjs            # icons/ light and dark sets from assets/icon.png, via headless Chromium
 
 python3 -m http.server 8765              # then open /test/harness.html
                                          # or /test/edit-harness.html — press "p"
