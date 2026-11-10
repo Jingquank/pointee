@@ -84,6 +84,10 @@ const MIRRORS = [
     ],
   },
   {
+    file: "inspector.mjs",
+    names: ["INSPECTOR", "parseColorList", "normalizeColour", "firstFamily", "radiusLabel", "relLuminance", "contrastRatio", "seenOn", "plateTone"],
+  },
+  {
     file: "copy-format.mjs",
     names: [
       "COPY_PREFS", "COPY_ORDER", "renderCopyHeader",

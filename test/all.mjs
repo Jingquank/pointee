@@ -30,6 +30,7 @@ const SUITES = [
   ["edit-color.mjs", "picker round trips, bounded by 8-bit quantisation"],
   ["edit-deltas.mjs", "the shape of the block the panel copies"],
   ["advanced.mjs", "uniform ranges, labels and kinds for the Advanced section"],
+  ["inspector.mjs", "colour and typeface parsing for the 3.0 inspector"],
   ["copy-format.mjs", "every copy setting still produces a true payload"],
   ["cdp.mjs", "the real content.js, in a real browser", { browser: true }],
 ];

@@ -17,8 +17,8 @@
 // #pnt-label / #pnt-toolbar and is the check that this transcription is honest.
 //
 // GEOMETRY in content.js is the other half of this mirror: M / GAP / PAIR /
-// MIN_LABEL_H / EDGE_INSET below must match GEOMETRY.margin / .gap / .pair /
-// .minLabelHeight / .edgeInset.
+// MIN_LABEL_H below must match GEOMETRY.margin / .gap / .pair /
+// .minLabelHeight.
 
 // ===== Current algorithms =====
 
@@ -161,40 +161,27 @@ const fitsV = (top, h, vh) => top >= M && top + h <= vh - M;
 // Below this the label has no room to say anything useful, so it steps aside.
 export const MIN_LABEL_H = 24;
 
-// On the edge: the pill's left sits this far in from the element's left.
-export const EDGE_INSET = 6;
+// ===== The selection layout =====
+// Since 3.0 there is one: the inspector beside the element and the toolbar
+// pill under the inspector, placed as one unit. The selection layout
+// preference and its four mounts were retired with it. Measured at 1440 wide:
+// a selected inspector is around 260×300 (it hugs its content, up to 420
+// wide), the scrolling part of it below its picture is what yields — `minH`
+// is the card with that part gone — and the pill is 132×34.
+export const LAYOUTS = ["side"];
 
-// ===== The four selection layouts =====
-// Since 2.0 the toolbar has four mounts (the selectionLayout preference):
-//   edge    a pill a gap under the element's bottom edge — its own box, the edge rule
-//   beside  a spine down the label's left
-//   under   a strip under the identity line       } inside the label: one box,
-//   bottom  a labelled bar along the label's foot  } toolbar null
-// Measured from content.css at 1440 wide: the readout is 92px over five lines;
-// the hints caption adds 18, the strip 26, the bar 36 plus its 8px gap; the
-// pill is 132×34. `minH` is the card with its body clipped away entirely —
-// the identity, the actions and the hints — below which it hides rather
-// than clip a button.
-export const LAYOUTS = ["edge", "beside", "under", "bottom"];
-
-export function boxesForLayout(vw, layout) {
+export function boxesForLayout(vw) {
   const w = (max) => Math.min(max, vw - 2 * M);
-  switch (layout) {
-    case "beside": return { label: { w: w(460), h: 110, minH: 42 }, toolbar: null };
-    case "under":  return { label: { w: w(460), h: 118, minH: 68 }, toolbar: null };
-    case "bottom": return { label: { w: w(392), h: 136, minH: 86 }, toolbar: null };
-    default:       return { label: { w: w(460), h: 110 }, toolbar: { w: 132, h: 34 } };
-  }
+  return { label: { w: w(300), h: 300, minH: 210 }, toolbar: { w: 132, h: 34 } };
 }
 
-export const optsForLayout = (layout) => ({ edge: layout === "edge" });
+export const optsForLayout = () => ({ side: true });
 
 // `boxes.toolbar` is null while merely hovering, and in the layouts that
 // mount the actions inside the label — then the label is placed alone.
 // `boxes.label.minH` is how far the label may shrink before it hides: with
 // the actions inside, the readout yields and the actions never do.
-// `opts.edge` is the On-the-edge rule: the toolbar is a pill hanging just
-// below the element's bottom edge, and the label places itself around it.
+// `opts.side` is the 3.0 rule: inspector beside the element, toolbar under it.
 export function layoutChrome(rect, vw, vh, boxes = boxesFor(vw), opts = {}) {
   const T = boxes.toolbar
     ? { ...boxes.toolbar, hidden: false }
@@ -246,27 +233,32 @@ export function layoutChrome(rect, vw, vh, boxes = boxesFor(vw), opts = {}) {
   // Scrolled entirely out of view — dock to the edge it disappeared behind.
   if (vis.bottom < vis.top || vis.right < vis.left) return dock(rect.bottom < 0);
 
-  // On the edge: the pill's centre line on the element's bottom edge, its
-  // left EDGE_INSET in from the element's left — whenever the whole pill
-  // is on screen there. The label then goes above the element, else below
-  // the pill, else inside the element's top: the first that fits and clears
-  // the pill. When none does, or the edge is off screen, the pill takes the
-  // slot the toolbar gets below, so it is never clipped.
-  if (opts.edge && !T.hidden) {
-    const pillTop = rect.bottom + GAP;
-    if (pillTop >= M && pillTop + T.h <= vh - M) {
-      const toolbar = mk(T, pillTop, rect.left + EDGE_INSET);
-      const around = (top, left, strategy) => {
-        const label = mk(L, top, left);
-        return ok(label, toolbar) && (label.hidden || intersectArea(label, toolbar) === 0)
-          ? { strategy, label, toolbar } : null;
-      };
-      const r =
-        around(vis.top - GAP - L.h, vis.left, "edge-above") ||
-        around(toolbar.top + T.h + GAP, vis.left, "edge-below") ||
-        around(vis.top + GAP, vis.left + GAP, "edge-inside");
-      if (r) return r;
-    }
+  // Beside: the inspector to the element's right with the toolbar a pair-gap
+  // under it, one unit, left-aligned. Its top follows the element's visible
+  // top and slides up to keep the bottom on screen. No room on the right: the
+  // left. No room on either side: inside the element's top-right corner, then
+  // the stacking strategies, clusters only — the two never split.
+  if (opts.side) {
+    const unitW = Math.max(L.hidden ? 0 : L.w, T.hidden ? 0 : T.w);
+    const top = Math.max(M, Math.min(vis.top, vh - M - clusterH));
+    const unit = (left, strategy) => {
+      if (left < M || left + unitW > vw - M) return null;
+      const label = { top, left, w: L.w, h: L.h, hidden: !!L.hidden };
+      const toolbar = { top: top + stack, left, w: T.w, h: T.h, hidden: T.hidden };
+      return ok(label, toolbar) ? { strategy, label, toolbar } : null;
+    };
+    const r =
+      unit(rect.right + GAP, "side-right") ||
+      unit(rect.left - GAP - unitW, "side-left");
+    if (r) return r;
+    const inside = cluster(Math.max(M, Math.min(vis.top + GAP, vh - M - clusterH)), "side-inside", vis.right - GAP - unitW);
+    if (inside && vis.right - vis.left >= unitW + 2 * GAP && vis.bottom - vis.top >= clusterH + 2 * GAP) return inside;
+    return (
+      cluster(vis.bottom + GAP, "cluster-below") ||
+      cluster(vis.top - GAP - clusterH, "cluster-above") ||
+      cluster(Math.max(M, vis.top + GAP), "cluster-inside-top", vis.left + GAP) ||
+      dock(false)
+    );
   }
 
   const strategies = [
@@ -297,7 +289,7 @@ export function layoutChrome(rect, vw, vh, boxes = boxesFor(vw), opts = {}) {
   return dock(false);
 }
 
-export function runSimV2(vw, vh, layout = "edge") {
+export function runSimV2(vw, vh, layout = "side") {
   return CASES.map((c) => {
     const rect = caseRect(c, vw, vh);
     const { strategy, label, toolbar } =
@@ -372,42 +364,42 @@ export function runSim(vw, vh, boxes = BOX) {
 }
 
 // ===== Self-check =====
-// Run directly (`node test/placement.mjs`), the spec proves the edge rule's
-// own invariants across the matrix: wherever the pill was placed under the
-// edge, its top is one gap below the element's bottom edge, its left is the
-// inset in (clamped to the viewport), and the label clears it; and at the
-// laptop size the rule wins on every case where there is room under the edge.
-// test/sim.mjs then evaluates all four layouts for clipping and overlap.
+// Run directly (`node test/placement.mjs`), the spec proves the beside rule's
+// own invariants across the matrix: wherever it placed the unit beside the
+// element, the inspector clears the element by one gap, the toolbar sits a
+// pair-gap under the inspector at the same left, and the unit is on screen;
+// and at the laptop size the right side wins whenever there is room there.
+// test/sim.mjs then evaluates the matrix for clipping and overlap.
 const isMain = typeof process !== "undefined" && /placement\.mjs$/.test(process.argv[1] || "");
 if (isMain) {
   const VIEWPORTS = [[1440, 900], [1440, 500], [1280, 720], [1024, 1366], [390, 844], [1440, 240]];
   const problems = [];
-  let straddled = 0, checked = 0;
+  let beside = 0, checked = 0;
   for (const [vw, vh] of VIEWPORTS) {
     for (const c of CASES) {
       const rect = caseRect(c, vw, vh);
-      const boxes = boxesForLayout(vw, "edge");
-      const r = layoutChrome(rect, vw, vh, boxes, { edge: true });
-      const pillTop = rect.bottom + GAP;
-      const edgeOn = pillTop >= M && pillTop + boxes.toolbar.h <= vh - M &&
-        Math.min(rect.bottom, vh) >= Math.max(rect.top, 0) && Math.min(rect.right, vw) >= Math.max(rect.left, 0);
+      const boxes = boxesForLayout(vw);
+      const r = layoutChrome(rect, vw, vh, boxes, { side: true });
+      const unitW = Math.max(boxes.label.w, boxes.toolbar.w);
+      const visible = Math.min(rect.bottom, vh) >= Math.max(rect.top, 0) && Math.min(rect.right, vw) >= Math.max(rect.left, 0);
+      const roomRight = visible && rect.right + GAP + unitW <= vw - M;
       checked++;
       const at = `${c.id} @ ${vw}x${vh}`;
-      if (r.strategy.startsWith("edge")) {
-        straddled++;
-        if (!edgeOn) problems.push(`${at}: under the edge with no room there`);
-        if (r.toolbar.top !== pillTop) problems.push(`${at}: pill top ${r.toolbar.top} is not a gap under the edge ${rect.bottom}`);
-        const wantLeft = Math.max(M, Math.min(rect.left + EDGE_INSET, vw - boxes.toolbar.w - M));
-        if (r.toolbar.left !== wantLeft) problems.push(`${at}: pill left ${r.toolbar.left}, wanted ${wantLeft}`);
-        if (!r.label.hidden && intersectArea(r.label, r.toolbar) > 0) problems.push(`${at}: label on the pill`);
-        if (r.toolbar.top < rect.bottom) problems.push(`${at}: the pill covers the element`);
-      } else if (vw === 1440 && vh === 900 && edgeOn) {
-        problems.push(`${at}: room under the edge but placed by ${r.strategy}`);
+      if (r.strategy === "side-right" || r.strategy === "side-left") {
+        beside++;
+        const shownW = Math.max(r.label.hidden ? 0 : boxes.label.w, boxes.toolbar.w);
+        const wantLeft = r.strategy === "side-right" ? rect.right + GAP : rect.left - GAP - shownW;
+        if (r.label.left !== wantLeft) problems.push(`${at}: inspector left ${r.label.left}, wanted ${wantLeft}`);
+        if (r.toolbar.left !== r.label.left) problems.push(`${at}: toolbar not under the inspector`);
+        if (!r.label.hidden && r.toolbar.top !== r.label.top + r.label.h + PAIR) problems.push(`${at}: toolbar not a pair-gap under the inspector`);
+        if (!r.label.hidden && intersectArea(r.label, rect) > 0) problems.push(`${at}: inspector covers the element`);
+      } else if (vw === 1440 && vh === 900 && roomRight && !c.degenerate) {
+        problems.push(`${at}: room on the right but placed by ${r.strategy}`);
       }
     }
   }
-  if (straddled === 0) problems.push("the edge rule never fired");
+  if (beside === 0) problems.push("the beside rule never fired");
   for (const p of problems) console.log("  FAIL  " + p);
-  console.log(`placement: ${checked} edge placements checked, ${straddled} under the edge, ${problems.length} problems`);
+  console.log(`placement: ${checked} placements checked, ${beside} beside the element, ${problems.length} problems`);
   if (problems.length) process.exit(1);
 }

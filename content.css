@@ -79,12 +79,18 @@
    this block made the argument first. */
 @media (prefers-reduced-motion: reduce) {
   #pnt-overlay-container.pnt-selected #pnt-ants path,
-  #pnt-label .pnt-label-marquee .pnt-marquee-inner,
   #pnt-overlay-container #pnt-edit-flash.pnt-edit-flashing,
   #pnt-toolbar .pnt-bar button.pnt-loading svg circle,
   #pnt-toolbar .pnt-bar button.pnt-flashing,
-  #pnt-toolbar .pnt-bar button.pnt-done svg polyline {
+  #pnt-toolbar .pnt-bar button.pnt-done svg polyline,
+  #pnt-label .pnt-insp-pic,
+  #pnt-overlay-container .pnt-insp-hl {
     animation: none;
+  }
+
+  /* The lifted layer still lifts — it says which plane is meant — but snaps. */
+  #pnt-label .pnt-insp-stack .pnt-insp-plane {
+    transition: none;
   }
 
   /* Still, the states keep their information. The lens stays filled — its
@@ -468,7 +474,6 @@
   backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
   color: var(--pnt-text-1);
   font: var(--pnt-weight-regular) var(--pnt-text-base)/var(--pnt-leading-base) var(--pnt-font-sans);
-  padding: var(--pnt-gap-section) 0;
   border-radius: var(--pnt-radius-lg);
   white-space: nowrap;
   pointer-events: none;
@@ -486,26 +491,11 @@
               opacity var(--pnt-duration-fast) var(--pnt-ease);
 }
 
-/* The card is three parts — the head (identity), the body (the readout) and
-   the hints caption — plus, in three of the four selection layouts, the
-   toolbar mounted between them (see the Toolbar section). Padding sits on
-   the parts rather than the card so a strip or a bar can run edge to edge.
-   Only the body may shrink: when the layout pass caps the card's height the
-   readout clips, and the identity, the actions and the hints stay whole. */
-#pnt-label .pnt-label-head,
-#pnt-label .pnt-label-content,
-#pnt-label .pnt-label-hints {
+/* The head is the identity line: tag, id, classes and the size. */
+#pnt-label .pnt-label-head {
   padding: 0 var(--pnt-md);
   flex: none;
   min-width: 0;
-}
-
-#pnt-label .pnt-label-content {
-  display: flex;
-  flex-direction: column;
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow: hidden;
 }
 
 #pnt-label .pnt-label-line {
@@ -520,28 +510,6 @@
   font-weight: var(--pnt-weight-bold);
   line-height: var(--pnt-leading-tight);
   letter-spacing: -0.01em;
-}
-
-/* Vertical rhythm — tight within a category, generous between categories */
-#pnt-label .pnt-label-line + .pnt-label-line {
-  margin-top: var(--pnt-gap-base);
-}
-/* The identity is the head, its own part — so the gap under it is the
-   body's, and pairs tighter when the body opens with the text preview. */
-#pnt-label .pnt-label-content {
-  margin-top: var(--pnt-gap-base);
-}
-#pnt-label .pnt-label-content:has(> .pnt-line-text:first-child) {
-  margin-top: var(--pnt-gap-pair);
-}
-#pnt-label .pnt-label-content:empty {
-  margin-top: 0;
-}
-#pnt-label .pnt-line-meta + .pnt-line-visual {
-  margin-top: var(--pnt-gap-pair);
-}
-#pnt-label .pnt-label-line + .pnt-line-breadcrumb {
-  margin-top: var(--pnt-gap-section);
 }
 
 #pnt-label .pnt-label-tag {
@@ -569,111 +537,518 @@
   letter-spacing: var(--pnt-tracking-num);
 }
 
-#pnt-label .pnt-label-prop {
-  color: var(--pnt-text-2);
-  font-size: var(--pnt-text-sm);
-  font-variant-numeric: tabular-nums;
+/* ===== Inspector (3.0) =====
+   The card's two levels — see CONTEXT.md and the Inspector section of
+   content.js. Both are a sheet: the name, then one row per fact, an icon and
+   a label before each. Hover stops there; selection adds a pane on the left
+   holding the picture (Map or Layers) and its switch, and is the one time the
+   card takes the pointer. Every colour here is a token: the page's own
+   colours arrive only through --insp-sw on a swatch, and through the inline
+   styles of the copy in the picture (and of the plate, ghost or halo that
+   keeps a clear layer readable). */
+/* A tab that was open when the extension updated still holds the previous
+   stylesheet beside this one, and its rules for names this sheet reuses would
+   show through wherever this sheet is silent: 8px above and below the pane,
+   the switch pushed to the right, a fixed height on the layer rows. So the
+   properties those rules set are stated here even where the value is the
+   default. */
+#pnt-label {
+  padding: 0;
+}
+#pnt-label.pnt-insp-live {
+  pointer-events: auto;
+  flex-direction: row;
+}
+/* The hover readout is a glance: narrow. */
+#pnt-label:not(.pnt-insp-live) {
+  max-width: min(320px, calc(100vw - 8px));
 }
 
-#pnt-label .pnt-label-text {
-  color: var(--pnt-text-2);
+#pnt-label .pnt-insp-sheet {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--pnt-gap-section) 0;
+}
+
+/* The name is a code name: small, quiet, held to a width and ellipsized. */
+#pnt-label .pnt-line-identity {
   font-size: var(--pnt-text-sm);
-  font-style: italic;
-  max-width: 100%;
+  font-weight: var(--pnt-weight-medium);
+  letter-spacing: 0;
+}
+#pnt-label .pnt-insp-who {
+  display: flex;
+  min-width: 0;
+  max-width: 150px;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
-
-/* The swatch's fill is the inspected page's own colour, written inline from JS.
-   It is never themed — see --pnt-checker in tokens.css. Only its border is
-   chrome, so only the border follows the theme. */
-#pnt-label .pnt-color-swatch {
-  display: inline-block;
-  width: var(--pnt-swatch);
-  height: var(--pnt-swatch);
-  border-radius: var(--pnt-radius-xs);
-  margin: 0 var(--pnt-gap-pair) -1px 0;
-  vertical-align: baseline;
-  border: 1px solid var(--pnt-swatch-border);
-  box-sizing: border-box;
-}
-
-#pnt-label .pnt-color-swatch.pnt-color-swatch-alpha {
-  background-image:
-    linear-gradient(45deg, var(--pnt-checker) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--pnt-checker) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--pnt-checker) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--pnt-checker) 75%);
-  background-size: 6px 6px;
-  background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
-}
-
-#pnt-label .pnt-label-sep {
-  color: var(--pnt-text-4);
-  margin: 0 var(--pnt-xs);
-}
-
-/* The bar's hints ride the breadcrumb row, at its right; the marquee takes
-   what is left and clips there. */
-#pnt-label .pnt-line-breadcrumb .pnt-hints {
-  margin-left: auto;
+#pnt-label .pnt-insp-who .pnt-label-tag {
   flex: none;
 }
-
-#pnt-label .pnt-label-marquee {
-  display: block;
-  flex: 0 1 auto;
+#pnt-label .pnt-insp-who .pnt-label-id,
+#pnt-label .pnt-insp-who .pnt-label-class {
   min-width: 0;
   overflow: hidden;
-  max-width: 380px;
-  mask-image: linear-gradient(to right, transparent, var(--pnt-mask) 8px, var(--pnt-mask) calc(100% - 16px), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, var(--pnt-mask) 8px, var(--pnt-mask) calc(100% - 16px), transparent);
-}
-
-#pnt-label .pnt-marquee-inner {
-  display: inline-block;
-  white-space: nowrap;
-  animation: pnt-marquee 12s linear infinite;
-}
-
-@keyframes pnt-marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-#pnt-label .pnt-label-breadcrumb {
+  text-overflow: ellipsis;
   color: var(--pnt-text-3);
+  font-weight: var(--pnt-weight-regular);
+}
+
+/* The pane: the picture, and under it the Map / Layers switch. */
+#pnt-label .pnt-insp-pane {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pnt-gap-section);
+  box-sizing: border-box;
+  align-self: stretch;
+  min-width: 148px;
+  margin: 0;
+  padding: var(--pnt-lg);
+  background: var(--pnt-field);
+  border-right: 1px solid var(--pnt-border-1);
+}
+
+/* The table: what scrolls when the viewport is short. The name and the pane
+   stay put. */
+#pnt-label .pnt-insp-table {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: var(--pnt-xs);
+  padding: 0 var(--pnt-md);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--pnt-border-3) transparent;
+}
+#pnt-label .pnt-insp-dr {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 14px 46px minmax(0, 1fr);
+  column-gap: 7px;
+  align-items: start;
+  padding: var(--pnt-gap-base) 0;
+  color: var(--pnt-text-2);
   font-size: var(--pnt-text-sm);
+  line-height: 20px;
 }
-
-#pnt-label .pnt-label-breadcrumb .pnt-label-tag {
-  color: var(--pnt-accent);
-  font-weight: var(--pnt-weight-medium);
+#pnt-label .pnt-insp-dr + .pnt-insp-dr {
+  border-top: 1px solid var(--pnt-border-1);
 }
-
-#pnt-label .pnt-label-breadcrumb .pnt-label-sep {
-  color: var(--pnt-text-4);
-}
-
-/* The hints caption under the readout — the pill's and the spine's home for
-   the keyboard ladder, and the bar's when there is no breadcrumb to ride. */
-#pnt-label .pnt-label-hints {
+#pnt-label .pnt-insp-ki {
   display: flex;
   align-items: center;
-  gap: var(--pnt-xs);
-  margin-top: var(--pnt-gap-section);
+  height: 20px;
   color: var(--pnt-text-3);
-  font: var(--pnt-weight-regular) var(--pnt-text-sm)/1 var(--pnt-font-sans);
+}
+#pnt-label .pnt-insp-ki svg {
+  width: 14px;
+  height: 14px;
+}
+#pnt-label .pnt-insp-dv {
+  min-width: 0;
+}
+#pnt-label .pnt-insp-k {
+  color: var(--pnt-text-3);
+}
+#pnt-label .pnt-insp-v,
+#pnt-label .pnt-insp-hex,
+#pnt-label .pnt-insp-more {
+  font-family: var(--pnt-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--pnt-tracking-num);
+}
+#pnt-label .pnt-insp-v,
+#pnt-label .pnt-insp-hex {
+  color: var(--pnt-text-1);
+}
+#pnt-label .pnt-insp-hex i {
+  font-style: normal;
+  color: var(--pnt-text-3);
+}
+#pnt-label .pnt-insp-cnt,
+#pnt-label .pnt-insp-more,
+#pnt-label .pnt-insp-none {
+  color: var(--pnt-text-3);
+}
+#pnt-label .pnt-insp-copied {
+  color: var(--pnt-accent);
+  font-family: var(--pnt-font-sans);
+}
+
+/* A typeface: its name written in itself, its numbers under it in mono. */
+#pnt-label .pnt-insp-face {
+  display: grid;
+}
+#pnt-label .pnt-insp-face + .pnt-insp-face {
+  margin-top: var(--pnt-gap-base);
+}
+#pnt-label .pnt-insp-fname {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pnt-text-1);
+  font-size: var(--pnt-text-lg);
+  line-height: 20px;
+}
+#pnt-label .pnt-insp-face .pnt-insp-v {
+  color: var(--pnt-text-2);
+  line-height: 16px;
+}
+
+/* A swatch: the page's colour over the checker, so alpha reads as alpha. */
+#pnt-label .pnt-insp-sws {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pnt-xs);
+}
+#pnt-label .pnt-insp-sw {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--pnt-radius-xs);
+  box-shadow: inset 0 0 0 1px var(--pnt-swatch-border);
+  background: linear-gradient(var(--insp-sw), var(--insp-sw));
+}
+#pnt-label .pnt-insp-sw.pnt-insp-sw-alpha {
+  background:
+    linear-gradient(var(--insp-sw), var(--insp-sw)),
+    repeating-conic-gradient(var(--pnt-checker) 0 25%, transparent 0 50%) 0 0 / 6px 6px;
+}
+
+/* Hover: every colour, eight to a row. */
+#pnt-label .pnt-insp-hsws {
+  display: flex;
+  max-width: 124px;
+  padding: var(--pnt-xs) 0;
+}
+
+/* Map / Layers: two icons under the picture. */
+#pnt-label .pnt-insp-mode {
+  margin: 0;
+  display: inline-flex;
+  gap: var(--pnt-gap-tight);
+  padding: var(--pnt-gap-tight);
+  border-radius: var(--pnt-radius-sm);
+  background: var(--pnt-surface-2);
+}
+#pnt-label .pnt-insp-mode button,
+#pnt-label .pnt-insp-chip,
+#pnt-label .pnt-insp-cell,
+#pnt-label .pnt-insp-swb {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+#pnt-label .pnt-insp-mode button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--pnt-text-3);
+  transition: background var(--pnt-duration-fast) var(--pnt-ease), color var(--pnt-duration-fast) var(--pnt-ease);
+}
+#pnt-label .pnt-insp-mode button:hover,
+#pnt-label .pnt-insp-mode button[aria-pressed="true"] {
+  color: var(--pnt-text-1);
+}
+#pnt-label .pnt-insp-mode button[aria-pressed="true"] {
+  background: var(--pnt-surface-0);
+  box-shadow: var(--pnt-shadow-1);
+}
+#pnt-label .pnt-insp-mode svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.75;
+}
+#pnt-label .pnt-insp-mode button:focus-visible,
+#pnt-label .pnt-insp-chip:focus-visible,
+#pnt-label .pnt-insp-cell:focus-visible,
+#pnt-label .pnt-insp-swb:focus-visible {
+  outline: 2px solid var(--pnt-focus);
+  outline-offset: 1px;
+}
+
+#pnt-label .pnt-insp-pic {
+  animation: pnt-insp-in var(--pnt-duration) var(--pnt-ease);
+}
+@keyframes pnt-insp-in {
+  from { opacity: 0; transform: translateY(2px); }
+}
+
+/* The copy of the element. Its own styles are inline and !important; this
+   box only sizes and frames it. */
+#pnt-label .pnt-insp-cbox {
+  position: relative;
+  flex: none;
+  overflow: visible;
+  white-space: normal;
+}
+#pnt-label .pnt-insp-cbox.pnt-insp-bare::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px dashed var(--pnt-border-3);
+  border-radius: 2px;
+  pointer-events: none;
+}
+#pnt-label .pnt-insp-mhl {
+  position: absolute;
+  z-index: 2;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1.5px var(--pnt-accent);
+  background: var(--pnt-accent-soft);
+  pointer-events: none;
+}
+#pnt-label .pnt-insp-frame {
+  background: repeating-linear-gradient(45deg, var(--pnt-surface-2) 0 6px, var(--pnt-surface-1) 6px 12px);
+}
+
+#pnt-label .pnt-insp-fig {
+  flex: none;
+  align-items: normal;
+  display: grid;
+  gap: var(--pnt-sm);
+  justify-items: center;
+}
+#pnt-label .pnt-insp-dim {
+  position: relative;
+  min-width: max-content;
+  height: 14px;
+  color: var(--pnt-text-3);
+  font: var(--pnt-weight-regular) var(--pnt-text-micro)/var(--pnt-leading-tight) var(--pnt-font-mono);
+  line-height: 14px;
+  text-align: center;
+}
+#pnt-label .pnt-insp-dim::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  border-top: 1px solid var(--pnt-border-3);
+}
+#pnt-label .pnt-insp-dim::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 8px;
+  border-left: 1px solid var(--pnt-border-3);
+  border-right: 1px solid var(--pnt-border-3);
+}
+#pnt-label .pnt-insp-dim span {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--pnt-xs);
+  background: var(--pnt-field);
+}
+
+/* A few colours: a list, each with its value. */
+#pnt-label .pnt-insp-chips {
+  display: grid;
+  gap: var(--pnt-gap-tight);
+  align-content: start;
+  margin: calc(-1 * var(--pnt-gap-tight)) 0;
+}
+#pnt-label .pnt-insp-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 var(--pnt-sm);
+  margin: 0 calc(-1 * var(--pnt-sm));
+  border-radius: var(--pnt-radius-sm);
+  font: var(--pnt-weight-regular) var(--pnt-text-sm)/1 var(--pnt-font-mono);
+  white-space: nowrap;
+}
+#pnt-label .pnt-insp-chip .pnt-insp-sw,
+#pnt-label .pnt-insp-swb .pnt-insp-sw {
+  width: 14px;
+  height: 14px;
+}
+#pnt-label .pnt-insp-chip:hover,
+#pnt-label .pnt-insp-chip.pnt-on,
+#pnt-label .pnt-insp-lyl.pnt-on {
+  background: var(--pnt-accent-soft);
+}
+
+/* The readout line over the grid, and over the layer rows. */
+#pnt-label .pnt-insp-sect {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--pnt-lg);
+  margin-bottom: var(--pnt-xs);
+  color: var(--pnt-text-3);
+  font-weight: var(--pnt-weight-medium);
+  white-space: nowrap;
+}
+#pnt-label .pnt-insp-rd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pnt-sm);
+}
+/* Many colours: a grid, six across, as many rows as it takes. */
+#pnt-label .pnt-insp-grid-wrap {
+  padding: 0;
+  border: 0;
+}
+#pnt-label .pnt-insp-grid {
+  display: grid;
+  gap: var(--pnt-xs);
+  padding: 2px 0;
+}
+#pnt-label .pnt-insp-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  transition: opacity var(--pnt-duration-fast) var(--pnt-ease);
+}
+#pnt-label .pnt-insp-cell .pnt-insp-sw {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+}
+#pnt-label .pnt-insp-cell:hover,
+#pnt-label .pnt-insp-cell.pnt-on {
+  box-shadow: 0 0 0 1.5px var(--pnt-accent);
+}
+#pnt-label .pnt-insp-cell.pnt-dim {
+  opacity: 0.25;
+}
+
+/* Layers: tilted planes in the pane, one row per plane in the sheet. */
+#pnt-label .pnt-insp-stack {
+  position: relative;
+  flex: none;
+}
+#pnt-label .pnt-insp-plane {
+  position: absolute;
+  transform: rotateX(56deg) rotateZ(-45deg) translateZ(var(--insp-lift, 0px));
+  transform-style: preserve-3d;
+  transition: transform var(--pnt-duration) var(--pnt-ease), opacity var(--pnt-duration) var(--pnt-ease);
+}
+#pnt-label .pnt-insp-glass {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--pnt-surface-0) 30%, transparent);
+  box-shadow: inset 0 0 0 1px var(--pnt-border-3);
+}
+/* Planes move when lifted, so they never take the pointer; the bands —
+   still, one per layer row — do (see layersPicture). */
+#pnt-label .pnt-insp-plane {
+  pointer-events: none;
+}
+#pnt-label .pnt-insp-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  cursor: pointer;
+}
+#pnt-label .pnt-insp-stack.pnt-lit .pnt-insp-plane:not(.pnt-on) {
+  opacity: 0.25;
+}
+#pnt-label .pnt-insp-plane.pnt-on {
+  --insp-lift: 14px;
+}
+#pnt-label .pnt-insp-plane.pnt-on .pnt-insp-glass {
+  box-shadow: inset 0 0 0 1.5px var(--pnt-accent);
+}
+/* The three aids for paint a clear plane would lose (inspectorLayerAid).
+   The plate's tone and the halo are inline, computed from the paint itself;
+   the ghost is the element's own fill, faint, under the plane's paint. */
+#pnt-label .pnt-insp-plane.pnt-insp-plated .pnt-insp-glass {
+  box-shadow: inset 0 0 0 1px var(--pnt-border-2);
+}
+#pnt-label .pnt-insp-plane.pnt-insp-plated.pnt-on .pnt-insp-glass {
+  box-shadow: inset 0 0 0 1.5px var(--pnt-accent);
+}
+#pnt-label .pnt-insp-ghost {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.55;
+}
+#pnt-label .pnt-insp-ghost .pnt-insp-cbox {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+#pnt-label .pnt-insp-lylist {
+  display: grid;
+  gap: var(--pnt-gap-tight);
+}
+#pnt-label .pnt-insp-lyl {
+  display: flex;
+  flex: initial;
+  height: auto;
+  align-items: flex-start;
+  gap: var(--pnt-gap-section);
+  padding: var(--pnt-xs) var(--pnt-sm);
+  margin: 0 calc(-1 * var(--pnt-sm));
+  border-radius: var(--pnt-radius-sm);
+  color: var(--pnt-text-3);
+  line-height: 16px;
+  white-space: nowrap;
+}
+#pnt-label .pnt-insp-rl {
+  min-width: 40px;
+}
+/* Six swatches to a row, as many rows as the layer has colours for. */
+#pnt-label .pnt-insp-lyl .pnt-insp-sws {
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--pnt-xs);
+  width: max-content;
+  max-width: 104px;
+  padding-top: 1px;
+}
+#pnt-label .pnt-insp-swb {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--pnt-radius-xs);
+}
+#pnt-label .pnt-insp-swb:hover {
+  box-shadow: 0 0 0 1.5px var(--pnt-accent);
+}
+#pnt-label .pnt-insp-swb .pnt-insp-hex {
+  line-height: 14px;
+}
+
+/* A hovered colour or layer, found on the page. */
+#pnt-overlay-container .pnt-insp-hl {
+  position: fixed;
+  border-radius: var(--pnt-radius-xs);
+  background: var(--pnt-accent-soft);
+  box-shadow: 0 0 0 1.5px var(--pnt-accent);
+  pointer-events: none;
+  animation: pnt-insp-hl-in var(--pnt-duration-fast) var(--pnt-ease);
+}
+@keyframes pnt-insp-hl-in {
+  from { opacity: 0; }
 }
 
 /* ===== Toolbar =====
-   One node, four buttons, four mounts. Which layout is in force is a class on
-   <html> — pnt-layout-edge, -beside, -under or -bottom, from the
-   selectionLayout preference — and content.js mounts #pnt-toolbar to match:
-   its own fixed root for the pill (On the edge), or inside #pnt-label for the
-   spine (Beside the lines), the strip (Under the name) and the bar (Along the
-   bottom). The base rules are what every button shares; each layout's block
-   is keyed on its class; the readout's own rules never change.
+   The pill: four icons and the keyboard hints on the glass, its own fixed
+   root, placed a pair-gap under the inspector (computeChromeLayout's beside
+   rule). Since 3.0 there is one arrangement; the four selection layouts were
+   retired with the preference that chose between them.
 
    `all: initial` on this and its descendants resets every regular property, so
    font-family and box-sizing have to be re-declared below. Custom properties are
@@ -692,16 +1067,6 @@
               opacity var(--pnt-duration-fast) var(--pnt-ease);
 }
 
-/* Mounted inside the card it is a part of it: in flow, and clickable even
-   though the label around it is not — pointer-events re-enables on a child. */
-#pnt-label > #pnt-toolbar {
-  position: static;
-  z-index: auto;
-  flex: none;
-  pointer-events: auto;
-  transition: none;
-}
-
 #pnt-toolbar .pnt-bar {
   all: initial;
   display: flex;
@@ -709,6 +1074,13 @@
   gap: var(--pnt-gap-tight);
   font-family: var(--pnt-font-sans);
   box-sizing: border-box;
+  background: var(--pnt-glass);
+  -webkit-backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  border: 1px solid var(--pnt-border-2);
+  border-radius: 999px;
+  box-shadow: var(--pnt-shadow-1);
+  padding: 3px;
 }
 
 #pnt-toolbar button {
@@ -720,8 +1092,8 @@
   background: transparent;
   color: var(--pnt-text-1);
   border: 0;
-  border-radius: var(--pnt-radius-md);
-  padding: var(--pnt-sm) 9px;
+  border-radius: 999px;
+  padding: 5px 7px;
   font: var(--pnt-weight-medium) var(--pnt-text-base)/var(--pnt-leading-tight) var(--pnt-font-sans);
   cursor: pointer;
   white-space: nowrap;
@@ -776,20 +1148,14 @@
   stroke-width: 1.75;
 }
 
-/* A label shows in the bar alone, and only above the compact breakpoint —
-   every other layout is icons by design, and the tooltip names them. A class
-   rather than a media query because the JS re-measures the locked widths
-   whenever the density flips. */
+/* Icons only; the tooltip names them. The label span stays in the markup for
+   the tooltip's "already says it" test and for screen readers via aria-label. */
 #pnt-toolbar button span {
   display: none;
 }
 
-html.pnt-layout-bottom #pnt-toolbar:not(.pnt-compact) button span {
-  display: inline;
-}
-
 /* The keyboard ladder, made visible: what is actually bound and nothing else.
-   Chips at the tertiary tone; where they sit is the layout's business. */
+   Chips at the tertiary tone, closing the pill after a hairline. */
 .pnt-hints {
   display: inline-flex;
   align-items: center;
@@ -812,118 +1178,11 @@ html.pnt-layout-bottom #pnt-toolbar:not(.pnt-compact) button span {
   box-sizing: border-box;
 }
 
-/* The strip carries its own hints, at its right end; the other three layouts
-   put theirs in the label (see updateLabel). */
 #pnt-toolbar .pnt-hints {
-  display: none;
-}
-
-html.pnt-layout-under #pnt-toolbar .pnt-hints {
-  display: inline-flex;
-  margin-left: auto;
-  padding-right: var(--pnt-xs);
-}
-
-/* ----- On the edge: the pill -----
-   A capsule of four icons on the glass, a gap under the element's bottom
-   edge and its left 6px in from the element's — the edge rule in
-   computeChromeLayout. */
-html.pnt-layout-edge #pnt-toolbar .pnt-bar {
-  background: var(--pnt-glass);
-  -webkit-backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
-  backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
-  border: 1px solid var(--pnt-border-2);
-  border-radius: 999px;
-  box-shadow: var(--pnt-shadow-1);
-  padding: 3px;
-}
-
-html.pnt-layout-edge #pnt-toolbar button {
-  padding: 5px 7px;
-  border-radius: 999px;
-}
-
-/* ----- Beside the lines: the spine -----
-   The card becomes a grid: the spine in the first column spanning every row,
-   the head, body and caption in the second. The spine spreads its four icons
-   down the card's height so each sits roughly level with the line it acts on
-   — Copy Code by the identity, Select Parent by the breadcrumb. It exists
-   only while selected: the hover readout has no first column. */
-html.pnt-layout-beside #pnt-label.pnt-with-actions {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
-html.pnt-layout-beside #pnt-label.pnt-with-actions > #pnt-toolbar {
-  grid-column: 1;
-  grid-row: 1 / -1;
+  margin-left: var(--pnt-xs);
+  padding: 0 var(--pnt-sm) 0 var(--pnt-sm);
+  border-left: 1px solid var(--pnt-border-1);
   align-self: stretch;
-  padding-left: var(--pnt-sm);
-}
-
-html.pnt-layout-beside #pnt-label.pnt-with-actions > .pnt-label-head,
-html.pnt-layout-beside #pnt-label.pnt-with-actions > .pnt-label-content,
-html.pnt-layout-beside #pnt-label.pnt-with-actions > .pnt-label-hints {
-  grid-column: 2;
-  padding-left: var(--pnt-sm);
-}
-
-html.pnt-layout-beside #pnt-label.pnt-with-actions > .pnt-label-content {
-  grid-row: 2;
-}
-
-html.pnt-layout-beside #pnt-label.pnt-with-actions > .pnt-label-hints {
-  grid-row: 3;
-}
-
-html.pnt-layout-beside #pnt-toolbar .pnt-bar {
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: stretch;
-  height: 100%;
-  gap: var(--pnt-gap-pair);
-}
-
-html.pnt-layout-beside #pnt-toolbar button,
-html.pnt-layout-under #pnt-toolbar button {
-  padding: 3px;
-}
-
-html.pnt-layout-beside #pnt-toolbar button svg,
-html.pnt-layout-under #pnt-toolbar button svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* ----- Under the name: the strip -----
-   Between the identity and the readout: four icons, then the hints at the
-   strip's end. One row from the name, never mixed with a readout line. */
-html.pnt-layout-under #pnt-label > #pnt-toolbar {
-  padding: var(--pnt-gap-pair) var(--pnt-sm) 0;
-}
-
-html.pnt-layout-under #pnt-toolbar .pnt-bar {
-  width: 100%;
-  gap: var(--pnt-gap-pair);
-}
-
-/* ----- Along the bottom: the bar -----
-   Four labelled actions behind a hairline, flush with the card's bottom. The
-   card is exactly as wide as the bar — content.js locks it (lockCardWidth) —
-   so the readout clamps inside the bar's width. Under 470px the labels drop
-   and the card narrows with the bar. */
-html.pnt-layout-bottom #pnt-label.pnt-with-actions {
-  padding-bottom: 0;
-}
-
-html.pnt-layout-bottom #pnt-label > #pnt-toolbar {
-  margin-top: var(--pnt-gap-section);
-  border-top: 1px solid var(--pnt-border-1);
-}
-
-html.pnt-layout-bottom #pnt-toolbar .pnt-bar {
-  padding: 3px;
 }
 
 /* ===== Tooltip =====

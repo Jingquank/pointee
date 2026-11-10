@@ -158,8 +158,6 @@
     gap: 6,
     pair: 6,
     minLabelHeight: 24,
-    narrowToolbar: 470, // the .pnt-compact breakpoint
-    edgeInset: 6, // On the edge: the pill's left sits this far in from the element's
     radiusFallback: 4, // assumed corner radius when the element is square
     redlinePillOffset: 8, // pill center sits this far perpendicular to its line
     redlineGuideOvershoot: 4, // dashed guide runs this far past the measurement line
@@ -235,59 +233,6 @@
   // Follow the OS live, but only while "system" is selected.
   darkQuery.addEventListener("change", () => {
     if (themePref === "system" && probeActive) applyTheme();
-  });
-
-  // ===== Selection layout =====
-  // Where the toolbar sits relative to the info label — the one preference
-  // that changes the *shape* of the selection chrome rather than a value in
-  // it. Chosen in two design rounds (test/selection-chrome-*.html); the four
-  // survivors, default first:
-  //   edge    a pill of four icons riding the element's bottom edge
-  //   beside  a spine of icons down the label's left, one per readout line
-  //   under   a strip of icons under the identity line
-  //   bottom  a labelled bar along the label's bottom; the card is as wide as it
-  // The readout is the same in all four. Mirrored in settings/settings.js —
-  // change both.
-  const CHROME_PREFS = {
-    selectionLayout: ["edge", "beside", "under", "bottom"],
-  };
-  const chromePrefs = {};
-  for (const key of Object.keys(CHROME_PREFS)) chromePrefs[key] = CHROME_PREFS[key][0];
-
-  function setChromePref(key, value) {
-    const roster = CHROME_PREFS[key];
-    if (roster) chromePrefs[key] = roster.includes(value) ? value : roster[0];
-  }
-
-  // The layout lands as pnt-layout-<id> on <html>, which every layout block in
-  // content.css keys off — the same shape as the theme attribute. It goes up
-  // with activation and comes down with it, so a page is never left classed.
-  function applyLayoutClass() {
-    const root = document.documentElement;
-    for (const id of CHROME_PREFS.selectionLayout) root.classList.remove(`pnt-layout-${id}`);
-    if (probeActive) root.classList.add(`pnt-layout-${chromePrefs.selectionLayout}`);
-  }
-
-  chrome.storage?.local.get(Object.keys(CHROME_PREFS), (stored) => {
-    if (!stored) return;
-    for (const key of Object.keys(CHROME_PREFS)) {
-      if (key in stored) setChromePref(key, stored[key]);
-    }
-    applyLayoutClass();
-  });
-
-  // A change with something selected redraws that selection in the new
-  // layout, in place — the same no-reload contract the theme keeps. The label
-  // is rewritten first (its hints move with the layout), then the toolbar is
-  // rebuilt and mounted where the new layout says.
-  chrome.storage?.onChanged.addListener((changes, area) => {
-    if (area !== "local" || !changes.selectionLayout) return;
-    setChromePref("selectionLayout", changes.selectionLayout.newValue);
-    applyLayoutClass();
-    if (probeActive && selectedElement) {
-      updateOverlay(selectedElement, { instant: true });
-      showToolbar(selectedElement);
-    }
   });
 
   // ===== Redline Preferences =====
@@ -472,56 +417,20 @@
     alignLeft: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h16"/></svg>',
     alignCenter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M4 18h16"/></svg>',
     alignRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M10 12h10M4 18h16"/></svg>',
+    // The inspector's row icons. Feather where it has one (maximize-2, type,
+    // droplet); the corner and the half disc are drawn to the same weight.
+    size: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
+    radius: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-7a9 9 0 0 1 9-9h7"/></svg>',
+    opacity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>',
+    type: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+    droplet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>',
+    // Feather, like the rest: the inspector's two pictures, Map and Layers.
+    image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+    layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
     grip: '<svg viewBox="0 8 8 14" fill="currentColor" stroke="none"><circle cx="2" cy="10" r="1.1"/><circle cx="6" cy="10" r="1.1"/><circle cx="2" cy="15" r="1.1"/><circle cx="6" cy="15" r="1.1"/><circle cx="2" cy="20" r="1.1"/><circle cx="6" cy="20" r="1.1"/></svg>',
   };
 
-  // ===== Style formatting helpers =====
-  function colorSwatch(rawColor) {
-    if (!rawColor) return "";
-    const m = rawColor.match(/^rgba?\([^)]*,\s*([\d.]+)\s*\)$/);
-    const alpha = m ? parseFloat(m[1]) : 1;
-    const cls = alpha < 1 ? "pnt-color-swatch pnt-color-swatch-alpha" : "pnt-color-swatch";
-    return `<span class="${cls}" style="background-color:${rawColor}"></span>`;
-  }
-
-  function formatColor(c) {
-    if (!c) return c;
-    const m = c.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/);
-    if (!m) return c;
-    const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
-    if (a === 0) return "transparent";
-    const hex = (n) => parseInt(n, 10).toString(16).padStart(2, "0");
-    const base = `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
-    return a < 1 ? `${base}@${Math.round(a * 100)}%` : base;
-  }
-
-  function splitShadows(s) {
-    const out = [];
-    let depth = 0;
-    let start = 0;
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      else if (ch === "," && depth === 0) {
-        out.push(s.slice(start, i).trim());
-        start = i + 1;
-      }
-    }
-    out.push(s.slice(start).trim());
-    return out;
-  }
-
-  function formatShadow(s) {
-    return splitShadows(s)
-      .map((part) => {
-        const colorMatch = part.match(/rgba?\([^)]+\)/);
-        if (!colorMatch) return part;
-        return `${colorSwatch(colorMatch[0])}${formatColor(colorMatch[0])}`;
-      })
-      .join(", ");
-  }
-
+  // ===== Text helpers =====
   function hasDirectText(el) {
     for (const node of el.childNodes) {
       if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) return true;
@@ -549,17 +458,6 @@
   const containsText = (el) =>
     Boolean(el && typeof el.textContent === "string" && el.textContent.trim().length > 0);
 
-  // Read cursor without the probe-mode plain-arrow override.
-  // Temporarily strips the override class for a synchronous style read; no paint occurs.
-  function getRealCursor(el) {
-    const root = document.documentElement;
-    const wasActive = root.classList.contains("pnt-point-active");
-    if (wasActive) root.classList.remove("pnt-point-active");
-    const cursor = getComputedStyle(el).cursor;
-    if (wasActive) root.classList.add("pnt-point-active");
-    return cursor;
-  }
-
   // ===== Message Listener =====
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "TOGGLE_POINT") {
@@ -575,7 +473,6 @@
   function activate() {
     probeActive = true;
     applyTheme();
-    applyLayoutClass();
     document.documentElement.classList.add("pnt-point-active");
     createOverlay();
     createSettingsButton();
@@ -616,7 +513,6 @@
     lastMouseX = -1;
     lastMouseY = -1;
     document.documentElement.classList.remove("pnt-point-active");
-    applyLayoutClass();
     document.removeEventListener("mousemove", onMouseMove, true);
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("keydown", onKeyDown, true);
@@ -1000,8 +896,8 @@
   // the actions inside the label — then the label is placed alone.
   // `label.minH` is how far the label may shrink before it hides: with the
   // actions inside, the readout yields and the actions never do.
-  // `opts.edge` is the On-the-edge rule: the toolbar is a pill hanging just
-  // below the element's bottom edge, and the label places itself around it.
+  // `opts.side` is the 3.0 rule: the inspector beside the element, the
+  // toolbar under the inspector, as one unit.
   function computeChromeLayout(rect, label, toolbar, vw, vh, opts) {
     const M = GEOMETRY.margin, GAP = GEOMETRY.gap, PAIR = GEOMETRY.pair;
 
@@ -1058,31 +954,33 @@
     // Scrolled entirely out of view — dock to the edge it disappeared behind.
     if (vis.bottom < vis.top || vis.right < vis.left) return dock(rect.bottom < 0);
 
-    // On the edge: the pill hangs a gap below the element's bottom edge, its
-    // left an edgeInset in from the element's left — whenever the whole pill
-    // is on screen there. It used to straddle the edge, its centre line on it,
-    // and covered the bottom sixteen pixels of whatever it rode: the last line
-    // of a paragraph, the caption of an image. Outside the element it covers
-    // nothing, and the rule is the same for a card and a line of text. The
-    // label then goes above the element, else below the pill, else inside
-    // the element's top: the first that fits and clears the pill. When none
-    // does, or the edge is off screen, the pill takes the slot the toolbar
-    // gets below, so it is never clipped.
-    if (opts && opts.edge && !T.hidden) {
-      const pillTop = rect.bottom + GAP;
-      if (pillTop >= M && pillTop + T.h <= vh - M) {
-        const tb = mk(T, pillTop, rect.left + GEOMETRY.edgeInset);
-        const around = (top, left, strategy) => {
-          const lb = mk(L, top, left);
-          return ok(lb, tb) && (lb.hidden || overlapArea(lb, tb) === 0)
-            ? { strategy: strategy, label: lb, toolbar: tb } : null;
-        };
-        const r =
-          around(vis.top - GAP - L.h, vis.left, "edge-above") ||
-          around(tb.top + T.h + GAP, vis.left, "edge-below") ||
-          around(vis.top + GAP, vis.left + GAP, "edge-inside");
-        if (r) return r;
-      }
+    // Beside (3.0): the inspector to the element's right with the toolbar a
+    // pair-gap under it, the two placed as one unit and left-aligned. Its top
+    // follows the element's visible top and slides up to keep the bottom on
+    // screen. No room on the right: the same unit on the left. No room on
+    // either side (a full-width element): over the element's top-right
+    // corner, inside it, then the older stacking strategies below.
+    if (opts && opts.side) {
+      const unitW = Math.max(L.hidden ? 0 : L.w, T.hidden ? 0 : T.w);
+      const top = Math.max(M, Math.min(vis.top, vh - M - clusterH));
+      const unit = (left, strategy) => {
+        if (left < M || left + unitW > vw - M) return null;
+        const lb = { top, left, w: L.w, h: L.h, hidden: L.hidden };
+        const tb = { top: top + stack, left, w: T.w, h: T.h, hidden: T.hidden };
+        return ok(lb, tb) ? { strategy, label: lb, toolbar: tb } : null;
+      };
+      const r =
+        unit(rect.right + GAP, "side-right") ||
+        unit(rect.left - GAP - unitW, "side-left");
+      if (r) return r;
+      const inside = cluster(Math.max(M, Math.min(vis.top + GAP, vh - M - clusterH)), "side-inside", vis.right - GAP - unitW);
+      if (inside && vis.right - vis.left >= unitW + 2 * GAP && vis.bottom - vis.top >= clusterH + 2 * GAP) return inside;
+      return (
+        cluster(vis.bottom + GAP, "cluster-below") ||
+        cluster(vis.top - GAP - clusterH, "cluster-above") ||
+        cluster(Math.max(M, vis.top + GAP), "cluster-inside-top", vis.left + GAP) ||
+        dock(false)
+      );
     }
 
     // The ordinary case, and the one that reads best: label above, actions below.
@@ -1120,33 +1018,6 @@
     for (const button of buttons) button.style.minWidth = button.offsetWidth + "px";
   }
 
-  // Along the bottom, the card is exactly as wide as its bar: the bar is
-  // measured at its natural width and the label locked to it, so the readout
-  // clips inside the bar's width rather than the bar stretching to the
-  // readout's. Cleared in every other layout, where the readout sets the width.
-  function lockCardWidth() {
-    if (!labelEl) return;
-    labelEl.style.width = "";
-    if (chromePrefs.selectionLayout !== "bottom" || !toolbarEl || toolbarEl.parentNode !== labelEl) return;
-    const bar = toolbarEl.querySelector(".pnt-bar");
-    bar.style.width = "max-content";
-    const w = bar.offsetWidth;
-    bar.style.width = "";
-    // Plus the label's own border, which sits outside the bar (border-box).
-    labelEl.style.width = (w + labelEl.offsetWidth - labelEl.clientWidth) + "px";
-  }
-
-  // Below the breakpoint the buttons collapse to icons, which changes their
-  // natural width — so the locks have to be recomputed when it flips.
-  function updateToolbarDensity(vw) {
-    if (!toolbarEl) return;
-    const narrow = vw < GEOMETRY.narrowToolbar;
-    if (toolbarEl.classList.contains("pnt-compact") === narrow) return;
-    toolbarEl.classList.toggle("pnt-compact", narrow);
-    lockButtonWidths();
-    lockCardWidth();
-  }
-
   // `instant` skips the glide on both boxes — for viewport tracking, where
   // animating would smear the chrome across the screen as you scroll.
   // `newToolbar` skips it on the toolbar alone: a toolbar that was just created
@@ -1160,8 +1031,6 @@
     const vw = document.documentElement.clientWidth;
     const vh = document.documentElement.clientHeight;
 
-    updateToolbarDensity(vw);
-
     // Measure at natural size. The label has to be shown to be measurable — a
     // pass that hid it must not leave it unmeasurable, or it could never come
     // back when the viewport grows — and a max-height left over from an earlier
@@ -1171,23 +1040,26 @@
     labelEl.style.overflow = "";
     hideTip(); // it named a button that is about to move
 
-    // With the actions mounted inside the card the solver sees one box, and
-    // the readout is what yields: the label may shrink to everything but its
-    // body, and no further, so the buttons are never the part that clips.
-    const inside = !!toolbarEl && toolbarEl.parentNode === labelEl;
-    const body = inside ? labelEl.querySelector(".pnt-label-content") : null;
+    // The inspector's table scrolls; its name and its picture never do, so
+    // the taller of the two is the least it may shrink to.
+    const body = labelEl.querySelector(".pnt-insp-live .pnt-insp-scroll, .pnt-insp-live.pnt-insp-scroll");
+    const pane = labelEl.querySelector(".pnt-insp-pane");
+    let paneH = 0;
+    if (pane) {
+      const ps = getComputedStyle(pane);
+      paneH = parseFloat(ps.paddingTop) + parseFloat(ps.paddingBottom) + (parseFloat(ps.rowGap) || 0) * (pane.children.length - 1) + 2;
+      for (const child of pane.children) paneH += child.offsetHeight;
+    }
     const label = {
       w: labelEl.offsetWidth,
       h: labelEl.offsetHeight,
-      minH: body ? labelEl.offsetHeight - body.offsetHeight : 0,
+      minH: labelEl.classList.contains("pnt-insp-live") && body ? Math.max(labelEl.offsetHeight - body.offsetHeight, paneH) : 0,
     };
-    const toolbar = toolbarEl && !inside
+    const toolbar = toolbarEl
       ? { w: toolbarEl.offsetWidth, h: toolbarEl.offsetHeight }
       : null;
 
-    const layout = computeChromeLayout(el.getBoundingClientRect(), label, toolbar, vw, vh, {
-      edge: !!toolbar && chromePrefs.selectionLayout === "edge",
-    });
+    const layout = computeChromeLayout(el.getBoundingClientRect(), label, toolbar, vw, vh, { side: true });
 
     if (instant) labelEl.classList.add("pnt-no-transition");
     if (toolbarInstant && toolbarEl) toolbarEl.classList.add("pnt-no-transition");
@@ -1202,9 +1074,10 @@
         labelEl.style.maxHeight = layout.label.h + "px";
         labelEl.style.overflow = "hidden";
       }
+      labelEl.classList.toggle("pnt-insp-capped", layout.label.h < label.h);
     }
 
-    if (toolbarEl && !inside) {
+    if (toolbarEl) {
       toolbarEl.style.top = layout.toolbar.top + "px";
       toolbarEl.style.left = layout.toolbar.left + "px";
     }
@@ -1220,209 +1093,975 @@
     updateSettingsButtonVisibility();
   }
 
+  // ===== Inspector =====
+  // The readout of what was *designed* — see CONTEXT.md. Two levels:
+  //   hover     the readout: name, size, typeface and size (text only),
+  //             opacity, corner radius, and every colour used inside.
+  //   selected  the picture: the same facts drawn — a live, scaled copy of the
+  //             element (Map) or the element split into its paints (Layers) —
+  //             with the colours copyable and findable on the page.
+  // Spacing, display, position and child counts are left out on purpose:
+  // Redline measures spacing, and the rest is not visual. Each fact is said
+  // once. Prototyped in round six of the 3.0 inspector page.
+
+  // Mirrored in test/inspector.mjs — change both.
+  const INSPECTOR = {
+    walkCap: 600,      // descendants read for colours and faces
+    cloneCap: 240,     // descendants copied into the picture
+    cloneBudgetMs: 40, // and no longer than this; the rest of the tree is left out
+    hoverSwatches: 24, // swatches on the hover readout before "+n"
+    gridAt: 6,         // more colours than this: a grid of swatches, not a list
+    gridCols: 6,       // and the grid is this many across, as many rows as it takes
+    weak: 2.5,         // paint under this contrast against the pane needs help in Layers
+    maxWidth: 420,
+  };
+
+  const LAYER_OF_ROLE = { gradient: "fill", fill: "fill", stroke: "stroke", text: "text", icon: "icon", shadow: "shadow" };
+  const LAYER_ORDER = ["shadow", "fill", "image", "stroke", "text", "icon"];
+
+  // Every colour literal in a computed value: a gradient, a shadow list, a
+  // plain colour. Computed values are rgb()/rgba() for sRGB input and keep
+  // their own function for wide-gamut input, so both are matched.
+  function parseColorList(value) {
+    if (!value || value === "none") return [];
+    const re = /(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\((?:[^()]|\([^()]*\))*\)|#[0-9a-fA-F]{3,8}\b/g;
+    return value.match(re) || [];
+  }
+
+  // One colour as the inspector speaks it: an uppercase hex and an alpha for
+  // sRGB, the computed string as-is for anything wider. Fully transparent is
+  // no colour at all.
+  function normalizeColour(raw) {
+    if (!raw) return null;
+    const m = raw.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/);
+    if (m) {
+      let a = m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+      if (!(a > 0)) return null;
+      a = Math.round(a * 100) / 100;
+      const hex = "#" + [m[1], m[2], m[3]]
+        .map((v) => Math.max(0, Math.min(255, Math.round(parseFloat(v)))).toString(16).padStart(2, "0"))
+        .join("").toUpperCase();
+      const css = a < 1 ? `rgb(${parseInt(hex.slice(1, 3), 16)} ${parseInt(hex.slice(3, 5), 16)} ${parseInt(hex.slice(5, 7), 16)} / ${a})` : hex;
+      return { key: a < 1 ? `${hex}/${a}` : hex, hex, alpha: a, css, copy: a < 1 ? `${hex}${Math.round(a * 255).toString(16).padStart(2, "0").toUpperCase()}` : hex };
+    }
+    if (/^transparent$/i.test(raw)) return null;
+    const alpha = raw.match(/\/\s*([\d.]+%?)\s*\)$/);
+    const a = alpha ? (alpha[1].endsWith("%") ? parseFloat(alpha[1]) / 100 : parseFloat(alpha[1])) : 1;
+    if (!(a > 0)) return null;
+    return { key: raw, hex: raw, alpha: 1, css: raw, copy: raw };
+  }
+
+  // The typeface is named once: the first family in the stack, unquoted.
+  function firstFamily(stack) {
+    const first = String(stack || "").split(",")[0] || "";
+    return first.trim().replace(/^["']|["']$/g, "") || "serif";
+  }
+
+  // splitTopLevel() (below, with the shadow parser) splits background-image lists.
+
+  function radiusLabel(r) {
+    return r.every((v) => v === r[0]) ? String(r[0]) : r.join(" ");
+  }
+
+  // ----- reading the element -----
+
+  // Wide-gamut computed values (Tailwind 4's oklch arrives as lab()) are shown
+  // as the sRGB hex they render as on most screens — one pixel through a
+  // canvas does the conversion and the gamut mapping — and copied as written.
+  let colourProbe = null;
+  const colourCache = new Map();
+  function readColour(raw) {
+    if (!raw || /^rgba?\(/.test(raw) || raw === "transparent") return normalizeColour(raw);
+    if (colourCache.has(raw)) return colourCache.get(raw);
+    const wide = normalizeColour(raw);
+    let out = wide;
+    if (wide) {
+      try {
+        colourProbe = colourProbe || document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+        colourProbe.clearRect(0, 0, 1, 1);
+        colourProbe.fillStyle = "#000";
+        colourProbe.fillStyle = raw;
+        colourProbe.fillRect(0, 0, 1, 1);
+        const [r, g, b, a] = colourProbe.getImageData(0, 0, 1, 1).data;
+        const srgb = normalizeColour(`rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 100) / 100})`);
+        if (srgb) out = { ...srgb, key: raw, css: raw, copy: raw, wide: raw };
+      } catch { /* keep the computed string */ }
+    }
+    colourCache.set(raw, out);
+    return out;
+  }
+
+  const MEDIA_TAGS = new Set(["IMG", "VIDEO", "CANVAS", "IFRAME", "EMBED", "OBJECT"]);
+
+  function cornerPx(value, w) {
+    const first = String(value || "0").split(" ")[0];
+    return Math.round(first.endsWith("%") ? (parseFloat(first) / 100) * w : parseFloat(first) || 0);
+  }
+
+  // Everything the two levels show, read once per element. `uses` keeps the
+  // nodes each colour paints, so hovering a colour can find them on the page.
+  function collectDesign(el) {
+    const rect = el.getBoundingClientRect();
+    const own = getComputedStyle(el);
+    const colours = new Map();
+    let images = 0;
+    const add = (raw, role, node) => {
+      const c = readColour(raw);
+      if (!c) return;
+      let entry = colours.get(c.key);
+      if (!entry) { entry = { ...c, uses: new Map() }; colours.set(c.key, entry); }
+      if (!entry.uses.has(role)) entry.uses.set(role, new Set());
+      entry.uses.get(role).add(node);
+    };
+    const isText = hasDirectText(el);
+    const faces = new Map();
+    const all = el.querySelectorAll("*");
+    const nodes = [el];
+    for (let i = 0; i < all.length && nodes.length < INSPECTOR.walkCap; i++) {
+      if (!isOurs.node(all[i])) nodes.push(all[i]);
+    }
+    for (const node of nodes) {
+      const s = node === el ? own : getComputedStyle(node);
+      if (s.display === "none") continue;
+      if (node instanceof SVGElement) {
+        if (node.tagName.toLowerCase() === "svg" || s.visibility === "hidden") continue;
+        if (s.fill && s.fill !== "none" && !s.fill.startsWith("url")) add(s.fill, "icon", node);
+        if (s.stroke && s.stroke !== "none" && !s.stroke.startsWith("url") && parseFloat(s.strokeWidth) > 0) add(s.stroke, "icon", node);
+        continue;
+      }
+      if (s.visibility === "hidden") continue;
+      add(s.backgroundColor, "fill", node);
+      if (s.backgroundImage && s.backgroundImage !== "none") {
+        for (const layer of splitTopLevel(s.backgroundImage)) {
+          if (layer.startsWith("url(")) images++;
+          else for (const c of parseColorList(layer)) add(c, "gradient", node);
+        }
+      }
+      for (const side of ["Top", "Right", "Bottom", "Left"]) {
+        const style = s[`border${side}Style`];
+        if (parseFloat(s[`border${side}Width`]) > 0 && style !== "none" && style !== "hidden") add(s[`border${side}Color`], "stroke", node);
+      }
+      if (s.boxShadow && s.boxShadow !== "none") for (const c of parseColorList(s.boxShadow)) add(c, "shadow", node);
+      if (MEDIA_TAGS.has(node.tagName)) images++;
+      if (hasDirectText(node)) {
+        add(s.color, "text", node);
+        if (isText) {
+          const face = firstFamily(s.fontFamily);
+          const size = Math.round(parseFloat(s.fontSize));
+          const lh = s.lineHeight === "normal" ? Math.round(size * 1.2) : Math.round(parseFloat(s.lineHeight));
+          let f = faces.get(face);
+          if (!f) { f = { face, css: s.fontFamily, sizes: [], weights: new Set() }; faces.set(face, f); }
+          const pair = `${size}/${lh}`;
+          if (!f.sizes.includes(pair)) f.sizes.push(pair);
+          f.weights.add(String(Math.round(parseFloat(s.fontWeight) || 400)));
+        }
+      }
+    }
+    const w = Math.round(rect.width), h = Math.round(rect.height);
+    return {
+      el,
+      tag: el.tagName.toLowerCase(),
+      id: el.id || "",
+      classes: Array.from(el.classList).filter((c) => !isOurs.name(c)),
+      w, h,
+      isText,
+      faces: [...faces.values()].map((f) => ({ ...f, weights: [...f.weights].sort() })),
+      opacity: Math.round((parseFloat(own.opacity) || 0) * 100),
+      radius: CORNERS.map((c) => cornerPx(own[c], rect.width)),
+      colours: [...colours.values()],
+      images,
+      truncated: all.length + 1 > INSPECTOR.walkCap,
+    };
+  }
+
+  const rolesOf = (c) => [...c.uses.keys()].join(" · ");
+  const swatchHtml = (c) =>
+    `<span class="pnt-insp-sw${c.alpha < 1 ? " pnt-insp-sw-alpha" : ""}" style="--insp-sw:${c.css}"></span>`;
+  const hexHtml = (c) => (c.alpha < 1 ? `${c.hex} <i>${Math.round(c.alpha * 100)}%</i>` : escapeHtml(c.hex));
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  // The name is a code name, rarely worth reading in full: it is held to a
+  // fixed width and ellipsized, and the whole of it is the title.
+  function identityHtml(d) {
+    const classes = d.classes.slice(0, 3).map((c) => `.${escapeHtml(c)}`).join("");
+    const full = d.tag + (d.id ? `#${d.id}` : "") + d.classes.map((c) => `.${c}`).join("");
+    return `<div class="pnt-label-line pnt-line-identity"><span class="pnt-insp-who" title="${escapeHtml(full)}">` +
+      `<span class="pnt-label-tag">${d.tag}</span>` +
+      (d.id ? `<span class="pnt-label-id">#${escapeHtml(d.id)}</span>` : "") +
+      (classes ? `<span class="pnt-label-class">${classes}</span>` : "") +
+      `</span></div>`;
+  }
+
+  // A typeface is two lines: its name, written in itself, then its numbers.
+  const facesHtml = (d) => d.faces.map((f) =>
+    `<div class="pnt-insp-face"><span class="pnt-insp-fname" style="font-family:${escapeHtml(f.css)};font-weight:${f.weights[0]}">${escapeHtml(f.face)}</span>` +
+    `<span class="pnt-insp-v">${f.sizes.join(", ")}${f.weights.length > 1 || f.weights[0] !== "400" ? ` · ${f.weights.join(" ")}` : ""}</span></div>`).join("");
+
+  // ----- the sheet: one row per fact, an icon and a name before each -----
+
+  const ROW_ICON = { Size: "size", Radius: "radius", Opacity: "opacity", Type: "type", Colour: "droplet", Layers: "layers" };
+  function sheetRow(table, name, value) {
+    const row = el$("div", "pnt-insp-dr",
+      `<span class="pnt-insp-ki" aria-hidden="true">${ICONS[ROW_ICON[name]]}</span><span class="pnt-insp-k">${name}</span>`);
+    const v = el$("div", "pnt-insp-dv");
+    if (typeof value === "string") v.innerHTML = value;
+    else v.appendChild(value);
+    row.appendChild(v);
+    table.appendChild(row);
+    return row;
+  }
+
+  // The rows both levels share. The colours come after: swatches on hover, the
+  // list, grid or layer rows on selection.
+  function sheetTable(d) {
+    const table = el$("div", "pnt-insp-table pnt-insp-scroll");
+    sheetRow(table, "Size", `<span class="pnt-insp-v">${d.w} × ${d.h}</span>`);
+    sheetRow(table, "Radius", `<span class="pnt-insp-v">${radiusLabel(d.radius)}</span>`);
+    sheetRow(table, "Opacity", `<span class="pnt-insp-v">${d.opacity}%</span>`);
+    if (d.isText && d.faces.length) sheetRow(table, "Type", facesHtml(d));
+    return table;
+  }
+
+  // ----- hover: the readout -----
+
+  function readoutColours(d) {
+    const n = d.colours.length, MAX = INSPECTOR.hoverSwatches;
+    return n
+      ? `<span class="pnt-insp-sws pnt-insp-hsws">${d.colours.slice(0, MAX).map(swatchHtml).join("")}${n > MAX ? `<span class="pnt-insp-more">+${n - MAX}</span>` : ""}</span>`
+      : `<span class="pnt-insp-none">no colours${d.images ? " · image" : ""}</span>`;
+  }
+
+  // ----- contrast: can a colour be seen where it is drawn? -----
+  // WCAG's relative luminance and ratio. Layers draws each kind of paint on a
+  // clear plane, so paint close to the pane's own tone — white text, on a
+  // light card — would vanish without one of the three aids below.
+
+  function relLuminance(rgb) {
+    const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+  }
+
+  function contrastRatio(a, b) {
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  }
+
+  // How well a colour reads on a background, alpha and all; null for a colour
+  // that never became a hex (it is left alone rather than guessed at).
+  function seenOn(c, bg) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(c.hex)) return null;
+    const a = c.alpha == null ? 1 : c.alpha;
+    const over = [1, 3, 5].map((i, k) => parseInt(c.hex.slice(i, i + 2), 16) * a + bg[k] * (1 - a));
+    return contrastRatio(relLuminance(over), relLuminance(bg));
+  }
+
+  // The grey a plate should be: the one on which the layer's worst-read colour
+  // reads best. Never quite black or white, so the plate stays a plate.
+  function plateTone(cols) {
+    let best = 0, at = 128;
+    for (let v = 30; v <= 225; v += 5) {
+      let worst = Infinity;
+      for (const c of cols) { const s = seenOn(c, [v, v, v]); if (s !== null && s < worst) worst = s; }
+      if (worst > best) { best = worst; at = v; }
+    }
+    return at;
+  }
+
+  // ----- the copy: a snapshot that looks the same anywhere -----
+  // A plain cloneNode() loses every rule that depends on where the element
+  // sits (`.feed .card h3`), so each node's computed style is written inline,
+  // !important, which also outranks anything the page or Pointee says about
+  // the copy's new home. Media is redrawn rather than re-run; frames become
+  // a quiet block. Past cloneCap nodes the rest of the tree is left out —
+  // boxes stay, their contents go.
+
+  // The properties that decide how a box looks, and nothing else. Every copy
+  // starts from `all: initial`, so the page's own rules (a bare `div { … }`)
+  // and Pointee's cannot reach it, and only these are written back. Copying
+  // all ~370 computed properties made a large card take seconds.
+  const SNAP_PROPS = [
+    "display", "position", "top", "right", "bottom", "left", "z-index", "float", "clear", "box-sizing",
+    "width", "height", "min-width", "min-height", "max-width", "max-height", "aspect-ratio",
+    "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "padding-top", "padding-right", "padding-bottom", "padding-left",
+    "border-top-width", "border-right-width", "border-bottom-width", "border-left-width",
+    "border-top-style", "border-right-style", "border-bottom-style", "border-left-style",
+    "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+    "border-top-left-radius", "border-top-right-radius", "border-bottom-right-radius", "border-bottom-left-radius",
+    "overflow-x", "overflow-y", "visibility", "opacity", "transform", "transform-origin",
+    "flex-direction", "flex-wrap", "justify-content", "align-items", "align-content", "align-self",
+    "justify-items", "justify-self", "flex-grow", "flex-shrink", "flex-basis", "order", "row-gap", "column-gap",
+    "grid-template-columns", "grid-template-rows", "grid-template-areas", "grid-auto-flow",
+    "grid-auto-columns", "grid-auto-rows", "grid-column-start", "grid-column-end", "grid-row-start", "grid-row-end",
+    "color", "background-color", "background-image", "background-size", "background-position",
+    "background-repeat", "background-clip", "background-origin", "box-shadow", "filter", "backdrop-filter",
+    "mix-blend-mode", "clip-path", "isolation",
+    "font-family", "font-size", "font-weight", "font-style", "font-stretch", "font-variant-caps",
+    "font-variant-numeric", "font-feature-settings", "font-variation-settings", "line-height", "letter-spacing",
+    "word-spacing", "text-align", "text-transform", "text-indent", "text-decoration-line", "text-decoration-color",
+    "text-decoration-style", "text-decoration-thickness", "text-underline-offset", "text-shadow", "text-overflow",
+    "white-space", "word-break", "overflow-wrap", "-webkit-text-fill-color", "-webkit-text-stroke-width",
+    "-webkit-text-stroke-color", "-webkit-background-clip", "-webkit-line-clamp", "-webkit-box-orient",
+    "vertical-align", "list-style-type", "list-style-position", "object-fit", "object-position",
+    "table-layout", "border-collapse", "border-spacing", "direction", "writing-mode",
+    "fill", "stroke", "stroke-width",
+  ];
+  const SNAP_DROP_TAGS = new Set(["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE", "NOSCRIPT", "TITLE", "HEAD"]);
+
+  // Written as one cssText assignment: faster than a property at a time, and
+  // it keeps these writes — which only ever touch the copy — out of the
+  // host-page audit's setProperty rule (test/edit-audit.mjs).
+  function copyComputed(from, to, s, pseudo) {
+    const style = s || getComputedStyle(from, pseudo || null);
+    let css = "all:initial !important;";
+    for (const p of SNAP_PROPS) {
+      let v = style.getPropertyValue(p);
+      if (!v) continue;
+      if (p === "position") v = v === "fixed" || v === "absolute" ? "absolute" : v === "sticky" ? "relative" : v;
+      css += `${p}:${v} !important;`;
+    }
+    to.style.cssText = css;
+    return style;
+  }
+
+  // Appends declarations to a copy's inline style; later ones win.
+  // Reads the style attribute as text before writing. `style.cssText +=` would
+  // read the parsed block back first, and serializing ~120 declarations per node, per
+  // layer, was most of what Layers cost.
+  const restyle = (node, decls) => {
+    node.style.cssText = (node.getAttribute("style") || "") + ";" + decls.map(([p, v]) => `${p}:${v} !important`).join(";");
+  };
+
+  function pseudoNode(from, which) {
+    const s = getComputedStyle(from, which);
+    const content = s.content;
+    if (!content || content === "none" || content === "normal") return null;
+    const span = document.createElement("span");
+    copyComputed(from, span, s);
+    const text = content.match(/^"(.*)"$/);
+    if (text) span.textContent = text[1].replace(/\\"/g, '"');
+    return span;
+  }
+
+  function snapshotElement(el) {
+    let budget = INSPECTOR.cloneCap;
+    let truncated = false;
+    const deadline = performance.now() + INSPECTOR.cloneBudgetMs;
+    const origOf = new Map();
+    const media = [];
+
+    const visit = (node, isRoot) => {
+      if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
+      if (node.nodeType !== Node.ELEMENT_NODE || SNAP_DROP_TAGS.has(node.tagName) || isOurs.node(node)) return null;
+      const s = getComputedStyle(node);
+      if (s.display === "none") return null;
+      if (budget-- <= 0 || (!isRoot && performance.now() > deadline)) { truncated = true; return null; }
+      const tag = node.tagName;
+
+      // An icon: the whole tree, its paints copied onto every shape.
+      if (node instanceof SVGElement) {
+        if (tag.toLowerCase() !== "svg") return null;
+        const svg = node.cloneNode(true);
+        copyComputed(node, svg, s);
+        const src = node.querySelectorAll("*"), dst = svg.querySelectorAll("*");
+        for (let i = 0; i < src.length && i < dst.length; i++) {
+          const cs = getComputedStyle(src[i]);
+          restyle(dst[i], ["fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "color", "visibility", "display"]
+            .map((p) => [p, cs.getPropertyValue(p)]).filter(([, v]) => v));
+          origOf.set(dst[i], src[i]);
+        }
+        origOf.set(svg, node);
+        return svg;
+      }
+
+      let out;
+      if (tag === "IMG") {
+        out = document.createElement("img");
+        out.src = node.currentSrc || node.src;
+        out.alt = "";
+        media.push(out);
+      } else if (tag === "VIDEO" || tag === "CANVAS") {
+        // Drawing a cross-origin frame taints only reading it back; showing
+        // it is allowed, which is all the picture does.
+        out = document.createElement("canvas");
+        out.width = Math.max(1, Math.round(node.clientWidth));
+        out.height = Math.max(1, Math.round(node.clientHeight));
+        try { out.getContext("2d").drawImage(node, 0, 0, out.width, out.height); } catch { /* blank is fine */ }
+        media.push(out);
+      } else if (tag === "IFRAME" || tag === "EMBED" || tag === "OBJECT") {
+        out = document.createElement("div");
+        out.className = "pnt-insp-frame";
+        media.push(out);
+      } else if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        out = node.cloneNode(tag === "SELECT");
+        if ("value" in node && tag !== "SELECT") out.value = node.value;
+        out.tabIndex = -1;
+        out.removeAttribute("id");
+        out.removeAttribute("name");
+      } else {
+        // Custom elements become plain boxes so the page's code never runs on
+        // the copy; their open shadow tree is copied in place of the children.
+        const custom = tag.includes("-") || !!node.shadowRoot;
+        out = document.createElement(custom ? (s.display.startsWith("inline") ? "span" : "div") : tag.toLowerCase());
+        // The few attributes that change how a box renders, named literally.
+        if (node.hasAttribute("dir")) out.setAttribute("dir", node.getAttribute("dir"));
+        if (node.hasAttribute("lang")) out.setAttribute("lang", node.getAttribute("lang"));
+        if (node.hasAttribute("colspan")) out.setAttribute("colspan", node.getAttribute("colspan"));
+        if (node.hasAttribute("rowspan")) out.setAttribute("rowspan", node.getAttribute("rowspan"));
+        if (node.hasAttribute("start")) out.setAttribute("start", node.getAttribute("start"));
+      }
+      copyComputed(node, out, s);
+      origOf.set(out, node);
+
+      if (!MEDIA_TAGS.has(tag) && tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+        const before = pseudoNode(node, "::before");
+        if (before) out.appendChild(before);
+        const kids = node.shadowRoot ? node.shadowRoot.childNodes : tag === "SLOT" ? node.assignedNodes({ flatten: true }) : node.childNodes;
+        for (const child of kids) {
+          const c = visit(child, false);
+          if (c) out.appendChild(c);
+        }
+        const after = pseudoNode(node, "::after");
+        if (after) out.appendChild(after);
+      }
+      return out;
+    };
+
+    const root = visit(el, true) || document.createElement("div");
+    const rect = el.getBoundingClientRect();
+    const display = root.style.getPropertyValue("display");
+    restyle(root, [
+      ["position", "absolute"], ["inset", "0 auto auto 0"], ["margin", "0"],
+      ["transform", "none"], ["translate", "none"], ["rotate", "none"], ["scale", "none"],
+      ["box-sizing", "border-box"], ["width", rect.width + "px"], ["height", rect.height + "px"], ["float", "none"],
+      ...(display === "inline" || display === "contents" ? [["display", "inline-block"]] : []),
+    ]);
+    root.setAttribute("inert", "");
+    root.setAttribute("aria-hidden", "true");
+    return { root, origOf, truncated };
+  }
+
+  // What one paint layer keeps of the copy. Text that is not shown keeps its
+  // space, so every layer lines up with every other.
+  function paintLayer(root, layer) {
+    const nodes = [root, ...root.querySelectorAll("*")];
+    for (const n of nodes) {
+      // Every copy starts from all: initial, which turns pointer-events back
+      // on under a plane that has them off; a lifting copy must not catch the
+      // pointer any more than the plane may. Written here, in the one pass.
+      const decls = [["pointer-events", "none"]];
+      if (n instanceof SVGElement) {
+        if (layer !== "icon" && n.tagName.toLowerCase() === "svg") decls.push(["visibility", "hidden"]);
+        restyle(n, decls);
+        continue;
+      }
+      const isMedia = n.tagName === "IMG" || n.tagName === "CANVAS" || n.classList.contains("pnt-insp-frame");
+      if (isMedia && layer !== "image") decls.push(["visibility", "hidden"]);
+      if (layer !== "text") decls.push(["color", "transparent"], ["-webkit-text-fill-color", "transparent"], ["text-shadow", "none"], ["text-decoration-color", "transparent"]);
+      if (layer !== "fill") decls.push(["background-color", "transparent"]);
+      const bg = n.style.getPropertyValue("background-image");
+      if (bg && bg !== "none") {
+        const keep = splitTopLevel(bg).filter((l) => (layer === "image" ? l.startsWith("url(") : layer === "fill" && !l.startsWith("url(")));
+        decls.push(["background-image", keep.length ? keep.join(", ") : "none"]);
+      }
+      if (layer !== "stroke") decls.push(["border-color", "transparent"], ["outline-color", "transparent"]);
+      if (layer !== "shadow") decls.push(["box-shadow", "none"]);
+      restyle(n, decls);
+    }
+  }
+
+  // ----- selected: the picture -----
+
+  let inspectorMode = "map";
+  chrome.storage?.local.get(["inspectorMode"], (stored) => {
+    if (stored && (stored.inspectorMode === "map" || stored.inspectorMode === "layers")) inspectorMode = stored.inspectorMode;
+  });
+
+  // How Layers keeps paint readable on a clear plane. One flat storage key,
+  // the roster default first — the Redline convention. Mirrored in
+  // settings/settings.js — change both.
+  //   ghost  the element's own fill, faint, under the text, icon and stroke planes
+  //   plate  a grey plate under a plane whose paint would vanish, toned to suit it
+  //   halo   the planes stay clear; the paint that would vanish gets a thin outline
+  const INSPECTOR_PREFS = {
+    inspectorLayerAid: ["ghost", "plate", "halo"],
+  };
+  const inspectorPrefs = {};
+  for (const key of Object.keys(INSPECTOR_PREFS)) inspectorPrefs[key] = INSPECTOR_PREFS[key][0];
+  function setInspectorPref(key, value) {
+    const roster = INSPECTOR_PREFS[key];
+    if (roster) inspectorPrefs[key] = roster.includes(value) ? value : roster[0];
+  }
+  chrome.storage?.local.get(Object.keys(INSPECTOR_PREFS), (stored) => {
+    if (!stored) return;
+    for (const key of Object.keys(INSPECTOR_PREFS)) if (key in stored) setInspectorPref(key, stored[key]);
+  });
+  chrome.storage?.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    let touched = false;
+    for (const key of Object.keys(INSPECTOR_PREFS)) {
+      if (changes[key]) { setInspectorPref(key, changes[key].newValue); touched = true; }
+    }
+    // A live change redraws an open Layers picture — the theme's no-reload contract.
+    if (touched && selectedElement && labelEl && inspectorMode === "layers") updateOverlay(selectedElement, { instant: true });
+  });
+
+  // Page highlights for a hovered colour or layer: one box per painted node.
+  let inspectorHlEls = [];
+  function lightPage(nodes) {
+    for (const n of inspectorHlEls) n.remove();
+    inspectorHlEls = [];
+    if (!nodes || !overlayContainer) return;
+    for (const node of nodes) {
+      const inline = !(node instanceof SVGElement) && getComputedStyle(node).display === "inline";
+      for (const r of inline ? node.getClientRects() : [node.getBoundingClientRect()]) {
+        if (!r.width && !r.height) continue;
+        const box = document.createElement("div");
+        box.className = "pnt-insp-hl";
+        box.style.cssText = `top:${r.top - 2}px;left:${r.left - 2}px;width:${r.width + 4}px;height:${r.height + 4}px`;
+        overlayContainer.appendChild(box);
+        inspectorHlEls.push(box);
+      }
+    }
+  }
+
+  const nodesOf = (c, layer) => {
+    const out = [];
+    for (const [role, set] of c.uses) if (!layer || LAYER_OF_ROLE[role] === layer) out.push(...set);
+    return out;
+  };
+
+  function flashCopied(target) {
+    if (!target || target.dataset.pntBusy) return;
+    target.dataset.pntBusy = "1";
+    const was = target.innerHTML;
+    target.innerHTML = '<span class="pnt-insp-copied">Copied</span>';
+    setTimeout(() => { target.innerHTML = was; delete target.dataset.pntBusy; }, 1200);
+  }
+
+  function copyColour(c, flashEl) {
+    navigator.clipboard.writeText(c.copy).then(() => flashCopied(flashEl), () => showToast("Couldn't copy the colour", true));
+  }
+
+  const scaleLabel = (s) => "×" + (s >= 1 ? +s.toFixed(1) : +s.toFixed(2));
+
+  // The picture's box is sized from the element's rect alone, so the card
+  // can be measured and placed before the copy exists. The copy is built in
+  // the next task (deferPicture) and dropped into the box: the layout does not
+  // move, selection stays instant, and the frames a transition needs (the
+  // Edit handoff, the glide) are not held up by it.
+  function scaledBox(d, scale) {
+    const box = document.createElement("div");
+    box.className = "pnt-insp-cbox";
+    box.style.width = d.w * scale + "px";
+    box.style.height = d.h * scale + "px";
+    return box;
+  }
+
+  function mountCopy(box, root, scale) {
+    restyle(root, [["transform", `scale(${scale})`], ["transform-origin", "0 0"]]);
+    box.appendChild(root);
+  }
+
+  let pictureToken = 0;
+  function deferPicture(fn) {
+    const token = pictureToken;
+    setTimeout(() => {
+      if (token !== pictureToken || !labelEl) return; // the card was rewritten meanwhile
+      fn();
+    }, 0);
+  }
+
+  function el$(tag, cls, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  }
+
+  // Map: the element itself, scaled; hovering a part names its colour.
+  function mapPicture(d, link) {
+    const MAXW = 124, MAXH = 128;
+    let scale = Math.min(MAXW / Math.max(1, d.w), MAXH / Math.max(1, d.h), 1);
+    if (Math.min(d.w, d.h) * scale < 40) scale = Math.min(40 / Math.max(1, Math.min(d.w, d.h)), MAXW / Math.max(1, d.w), MAXH / Math.max(1, d.h), 6);
+    const fig = el$("div", "pnt-insp-map pnt-insp-fig");
+    const cbox = scaledBox(d, scale);
+    let snap = null;
+    if (!d.colours.length || d.isText) cbox.classList.add("pnt-insp-bare");
+    fig.appendChild(cbox);
+    const dim = el$("div", "pnt-insp-dim", `<span>${d.w} × ${d.h}${Math.abs(scale - 1) > 0.01 ? ` · ${scaleLabel(scale)}` : ""}</span>`);
+    dim.style.width = Math.max(d.w * scale, 56) + "px";
+    fig.appendChild(dim);
+
+    const cloneOf = new Map();
+    deferPicture(() => {
+      snap = snapshotElement(d.el);
+      for (const [clone, orig] of snap.origOf) cloneOf.set(orig, clone);
+      mountCopy(cbox, snap.root, scale);
+    });
+    const lightMap = (c) => {
+      for (const n of cbox.querySelectorAll(".pnt-insp-mhl")) n.remove();
+      if (!c) return;
+      const b = cbox.getBoundingClientRect();
+      for (const orig of nodesOf(c)) {
+        const clone = cloneOf.get(orig);
+        if (!clone) continue;
+        const r = clone.getBoundingClientRect();
+        const hl = el$("div", "pnt-insp-mhl");
+        hl.style.cssText = `left:${r.left - b.left - 1}px;top:${r.top - b.top - 1}px;width:${r.width + 2}px;height:${r.height + 2}px`;
+        cbox.appendChild(hl);
+      }
+    };
+    const on = (c) => {
+      lightPage(c ? nodesOf(c) : null);
+      lightMap(c);
+      if (link.grid) link.grid.mark(c);
+    };
+    link.picture = { colour: lightMap };
+    // Hovering the copy: the deepest painted node under the pointer wins.
+    cbox.addEventListener("pointermove", (e) => {
+      if (!snap) return;
+      const hit = document.elementsFromPoint(e.clientX, e.clientY).find((n) => snap.root.contains(n));
+      const orig = hit && snap.origOf.get(hit.nodeType === 1 ? hit : hit.parentElement);
+      if (!orig) return on(null);
+      let best = null, depth = -1;
+      for (const c of d.colours) {
+        for (const node of nodesOf(c)) {
+          if (node !== orig && !node.contains(orig)) continue;
+          let k = 0;
+          for (let p = orig; p && p !== node; p = p.parentElement) k++;
+          const score = 1000 - k;
+          if (score > depth) { depth = score; best = c; }
+        }
+      }
+      on(best);
+    });
+    cbox.addEventListener("pointerleave", () => on(null));
+    return { el: fig };
+  }
+
+  // The pane's own tone, as plain sRGB: what a clear plane is seen against.
+  function paneTone(pane) {
+    try {
+      colourProbe = colourProbe || document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const layers = [
+        getComputedStyle(labelEl).getPropertyValue("--pnt-surface-0").trim(),
+        getComputedStyle(labelEl).backgroundColor,
+        getComputedStyle(pane).backgroundColor,
+      ];
+      colourProbe.clearRect(0, 0, 1, 1);
+      for (const layer of layers) {
+        if (!layer) continue;
+        colourProbe.fillStyle = layer;
+        colourProbe.fillRect(0, 0, 1, 1);
+      }
+      const [r, g, b] = colourProbe.getImageData(0, 0, 1, 1).data;
+      return [r, g, b];
+    } catch { return [128, 128, 128]; }
+  }
+
+  // What the element sits on: the nearest painted background behind it.
+  function backingOf(el) {
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const bg = getComputedStyle(n).backgroundColor;
+      if (normalizeColour(bg)) return bg;
+    }
+    return "white";
+  }
+
+  // One of three aids for a plane whose paint would vanish (inspectorLayerAid).
+  // `aid` is shared by the planes of one picture, so the fill copy a ghost
+  // needs is painted once and cloned, and the node index a halo needs is built
+  // once.
+  function aidLayer(aid, d, g, parts, scale) {
+    if (g.L === "image" || g.L === "shadow" || !g.cols.length) return;
+    if (aid.mode === "ghost") {
+      if (g.L === "fill") return;
+      if (!aid.fill) { aid.fill = aid.base.root.cloneNode(true); paintLayer(aid.fill, "fill"); }
+      const ghost = el$("div", "pnt-insp-ghost");
+      ghost.style.cssText = `border-radius:${parts.glass.style.borderRadius};background:${aid.backing}`;
+      const box = scaledBox(d, scale);
+      mountCopy(box, aid.fill.cloneNode(true), scale);
+      ghost.appendChild(box);
+      parts.pl.insertBefore(ghost, parts.box);
+      return;
+    }
+    const weak = g.cols.filter((c) => { const s = seenOn(c, aid.tone); return s !== null && s < INSPECTOR.weak; });
+    if (!weak.length) return;
+    if (aid.mode === "plate") {
+      const v = plateTone(g.cols);
+      parts.glass.style.background = `rgb(${v} ${v} ${v} / 0.9)`;
+      parts.pl.classList.add("pnt-insp-plated");
+      return;
+    }
+    // halo: per node, so a layer holding both white and black text reads whole
+    const nodes = [parts.root, ...parts.root.querySelectorAll("*")];
+    if (!aid.index) {
+      aid.index = new Map();
+      [aid.base.root, ...aid.base.root.querySelectorAll("*")].forEach((node, i) => {
+        const orig = aid.base.origOf.get(node);
+        if (orig) aid.index.set(orig, i);
+      });
+    }
+    const px = Math.max(0.6, 0.9 / scale); // the copy is scaled; the halo should not be
+    for (const c of weak) {
+      const rgb = [1, 3, 5].map((i) => parseInt(c.hex.slice(i, i + 2), 16));
+      const tint = relLuminance(rgb) > 0.35 ? "rgb(0 0 0 / 0.78)" : "rgb(255 255 255 / 0.9)";
+      for (const [role, set] of c.uses) {
+        if (LAYER_OF_ROLE[role] !== g.L) continue;
+        for (const orig of set) {
+          const node = nodes[aid.index.get(orig)];
+          if (!node) continue;
+          restyle(node, role === "text"
+            ? [["text-shadow", `0 0 ${px}px ${tint}, 0 0 ${px}px ${tint}, 0 0 ${px * 2.5}px ${tint}`]]
+            : [["filter", `drop-shadow(0 0 ${px}px ${tint}) drop-shadow(0 0 ${px}px ${tint})`]]);
+        }
+      }
+    }
+  }
+
+  // Layers: one plane per kind of paint in the pane, one row per plane in the
+  // sheet. `rows` is the sheet's half.
+  function layersPicture(d, link) {
+    const groups = [];
+    for (const L of LAYER_ORDER) {
+      const cols = L === "image" ? [] : d.colours.filter((c) => [...c.uses.keys()].some((r) => LAYER_OF_ROLE[r] === L));
+      if (cols.length || (L === "image" && d.images)) groups.push({ L, cols });
+    }
+    const n = groups.length, STEP = 30, BOX = 84;
+    const scale = Math.min(BOX / Math.max(1, d.w), BOX / Math.max(1, d.h), 3);
+    const pw = d.w * scale, ph = d.h * scale;
+    const foot = Math.max((pw + ph) * 0.7071 * Math.cos((56 * Math.PI) / 180) + 8, 26);
+    const top0 = foot / 2 + 8;
+    const FIGW = Math.max(64, Math.ceil((pw + ph) * 0.7071) + 12);
+    const figH = n ? (n - 1) * STEP + foot + 16 : 40;
+    const fig = el$("div", "pnt-insp-stack");
+    fig.style.width = FIGW + "px";
+    fig.style.height = figH + "px";
+
+    // The sheet's half: a readout line, then the rows, top plane first.
+    const sheet = el$("div", "pnt-insp-lsheet");
+    const sect = el$("div", "pnt-insp-sect");
+    const list = el$("div", "pnt-insp-lylist");
+    sheet.append(sect, list);
+    let said = null;
+    const idle = () => { sect.innerHTML = `<span>${plural(n, "layer")}</span><span>${d.colours.length}${d.truncated ? "+" : ""} colour${d.colours.length === 1 ? "" : "s"}</span>`; };
+    const say = (c, name) => {
+      said = c ? [c, name] : null;
+      if (sect.querySelector("[data-pnt-busy]")) return; // "Copied" is still showing
+      if (c) sect.innerHTML = `<span class="pnt-insp-rd">${swatchHtml(c)}<span class="pnt-insp-hex">${hexHtml(c)}</span></span><span>${name}</span>`;
+      else idle();
+    };
+
+    const fills = [];
+    const radius = d.radius.map((v) => Math.min(v * scale, Math.min(pw, ph) / 2) + "px").join(" ");
+    const planes = [];
+    const lift = (Ls) => {
+      fig.classList.toggle("pnt-lit", !!Ls);
+      for (const p of planes) {
+        const onIt = !!Ls && Ls.includes(p.g.L);
+        p.pl.classList.toggle("pnt-on", onIt);
+        p.row.classList.toggle("pnt-on", onIt);
+      }
+    };
+    link.picture = { colour: (c) => lift(c ? [...new Set([...c.uses.keys()].map((r) => LAYER_OF_ROLE[r]))] : null) };
+    const rows = [];
+    groups.forEach((g, i) => {
+      const cy = (n - 1 - i) * STEP + top0;
+      const pl = el$("div", "pnt-insp-plane");
+      pl.style.cssText = `left:${FIGW / 2 - pw / 2}px;top:${cy - ph / 2}px;width:${pw}px;height:${ph}px;z-index:${10 + i}`;
+      const glass = el$("div", "pnt-insp-glass");
+      glass.style.borderRadius = radius;
+      pl.appendChild(glass);
+      const box = scaledBox(d, scale);
+      pl.appendChild(box);
+      fills.push((aid) => {
+        const root = aid.base.root.cloneNode(true);
+        // cloneNode does not carry a canvas's pixels; redraw them from the base.
+        const from = aid.base.root.querySelectorAll("canvas"), to = root.querySelectorAll("canvas");
+        to.forEach((cv, k) => { try { cv.getContext("2d").drawImage(from[k], 0, 0); } catch { /* blank */ } });
+        paintLayer(root, g.L);
+        aidLayer(aid, d, g, { pl, glass, box, root }, scale);
+        mountCopy(box, root, scale);
+      });
+      fig.appendChild(pl);
+
+      const row = el$("div", "pnt-insp-lyl", `<span class="pnt-insp-rl">${g.L}</span>`);
+      rows[n - 1 - i] = row;
+      planes.push({ g, pl, row });
+      const pageNodes = () => g.L === "image"
+        ? [d.el, ...d.el.querySelectorAll("*")].filter((x) => MEDIA_TAGS.has(x.tagName) || (getComputedStyle(x).backgroundImage || "").includes("url("))
+        : g.cols.flatMap((c) => nodesOf(c, g.L));
+      const enter = () => { lift([g.L]); lightPage(pageNodes()); };
+      const leave = () => { lift(null); lightPage(null); say(null); };
+      if (g.L === "image") row.appendChild(el$("span", "pnt-insp-cnt", plural(d.images, "image")));
+      else {
+        const sws = el$("span", "pnt-insp-sws");
+        const one = g.cols.length === 1;
+        for (const c of g.cols) {
+          const b = el$("button", "pnt-insp-swb", swatchHtml(c) + (one ? `<span class="pnt-insp-hex">${hexHtml(c)}</span>` : ""));
+          b.type = "button";
+          b.title = c.wide || "";
+          b.setAttribute("aria-label", `${c.hex} ${g.L}`);
+          b.addEventListener("pointerenter", () => { lightPage(nodesOf(c, g.L)); say(c, g.L); });
+          b.addEventListener("pointerleave", () => { lightPage(pageNodes()); say(null); });
+          b.addEventListener("focus", () => { enter(); lightPage(nodesOf(c, g.L)); say(c, g.L); });
+          b.addEventListener("blur", leave);
+          b.addEventListener("click", () => {
+            say(c, g.L);
+            copyColour(c, sect.querySelector(".pnt-insp-rd"));
+            // flashCopied puts the readout back as it was; then say what is true now.
+            setTimeout(() => { if (sect.isConnected) say(said ? said[0] : null, said ? said[1] : null); }, 1250);
+          });
+          sws.appendChild(b);
+        }
+        row.appendChild(sws);
+      }
+      // The plane lifts when hovered, which would carry it out from under the
+      // pointer, drop it, and lift it again — a flicker. So the plane never
+      // takes the pointer: a band that does not move does, one per plane,
+      // spanning the stack's width.
+      const band = el$("div", "pnt-insp-band");
+      const half = STEP / 2;
+      const top = i === n - 1 ? 0 : cy - half;
+      const bottom = i === 0 ? figH : cy + half;
+      band.style.cssText = `top:${top}px;height:${bottom - top}px`;
+      fig.appendChild(band);
+      for (const x of [band, row]) { x.addEventListener("pointerenter", enter); x.addEventListener("pointerleave", leave); }
+    });
+    for (const r of rows) list.appendChild(r);
+    if (!n) list.appendChild(el$("div", "pnt-insp-none", "Nothing painted"));
+    idle();
+    if (n) deferPicture(() => {
+      const pane = labelEl.querySelector(".pnt-insp-pane");
+      const aid = { mode: inspectorPrefs.inspectorLayerAid, base: snapshotElement(d.el), tone: pane ? paneTone(pane) : [128, 128, 128], backing: backingOf(d.el) };
+      for (const f of fills) f(aid);
+    });
+    return { el: fig, rows: sheet };
+  }
+
+  // A few colours: a list, each with its value.
+  function colourList(d, link) {
+    const chips = el$("div", "pnt-insp-chips");
+    const mark = (c) => { for (const n of chips.children) n.classList.toggle("pnt-on", n._pntColour === c); };
+    const on = (c) => { lightPage(c ? nodesOf(c) : null); if (link.picture) link.picture.colour(c); mark(c); };
+    for (const c of d.colours) {
+      const b = el$("button", "pnt-insp-chip", `${swatchHtml(c)}<span class="pnt-insp-hex">${hexHtml(c)}</span>`);
+      b.type = "button";
+      b._pntColour = c;
+      b.title = rolesOf(c) + (c.wide ? ` · ${c.wide}` : "");
+      b.addEventListener("pointerenter", () => on(c));
+      b.addEventListener("pointerleave", () => on(null));
+      b.addEventListener("focus", () => on(c));
+      b.addEventListener("blur", () => on(null));
+      b.addEventListener("click", () => copyColour(c, b.querySelector(".pnt-insp-hex")));
+      chips.appendChild(b);
+    }
+    link.grid = { mark };
+    return chips;
+  }
+
+  // Many colours: a grid, as many rows as it takes; its title row is the readout.
+  function colourGrid(d, link) {
+    const wrap = el$("div", "pnt-insp-grid-wrap");
+    const n = d.colours.length;
+    const sect = el$("div", "pnt-insp-sect");
+    const grid = el$("div", "pnt-insp-grid");
+    grid.style.gridTemplateColumns = `repeat(${Math.min(n, INSPECTOR.gridCols)}, 22px)`;
+    const idle = () => { sect.innerHTML = `<span>${n}${d.truncated ? "+" : ""} colours</span>`; };
+    const say = (c) => { sect.innerHTML = `<span class="pnt-insp-rd">${swatchHtml(c)}<span class="pnt-insp-hex">${hexHtml(c)}</span></span><span>${rolesOf(c)}</span>`; };
+    const mark = (c) => { for (const x of grid.children) x.classList.toggle("pnt-on", x._pntColour === c); if (c) say(c); else idle(); };
+    const on = (c) => { lightPage(c ? nodesOf(c) : null); if (link.picture) link.picture.colour(c); mark(c); };
+    for (const c of d.colours) {
+      const b = el$("button", "pnt-insp-cell", swatchHtml(c));
+      b.type = "button";
+      b._pntColour = c;
+      b.setAttribute("aria-label", `${c.hex} ${rolesOf(c)}`);
+      b.addEventListener("pointerenter", () => on(c));
+      b.addEventListener("pointerleave", () => on(null));
+      b.addEventListener("focus", () => on(c));
+      b.addEventListener("blur", () => on(null));
+      b.addEventListener("click", () => copyColour(c, sect.querySelector(".pnt-insp-rd")));
+      grid.appendChild(b);
+    }
+    wrap.append(sect, grid);
+    idle();
+    link.grid = { mark };
+    return wrap;
+  }
+
+  // The selected card: the picture and its switch in a pane on the left, and
+  // the sheet's last row — the colours in Map, the layer rows in Layers.
+  function renderPicture(d, table) {
+    const link = {};
+    const pane = el$("div", "pnt-insp-pane");
+    const pic = el$("div", "pnt-insp-pic");
+    if (inspectorMode === "map") {
+      pic.appendChild(mapPicture(d, link).el);
+      sheetRow(table, "Colour", !d.colours.length
+        ? `<span class="pnt-insp-none">${d.images ? "No colours — image" : "No colours"}</span>`
+        : d.colours.length > INSPECTOR.gridAt ? colourGrid(d, link) : colourList(d, link));
+    } else {
+      const layers = layersPicture(d, link);
+      pic.appendChild(layers.el);
+      sheetRow(table, "Layers", layers.rows);
+    }
+    pane.appendChild(pic);
+    const sw = el$("span", "pnt-insp-mode");
+    sw.setAttribute("role", "group");
+    sw.setAttribute("aria-label", "Picture");
+    for (const m of ["map", "layers"]) {
+      const b = el$("button", "", ICONS[m === "map" ? "image" : "layers"]);
+      b.type = "button";
+      b.dataset.tip = m === "map" ? "Map" : "Layers";
+      b.setAttribute("aria-label", b.dataset.tip);
+      b.setAttribute("aria-pressed", String(m === inspectorMode));
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (inspectorMode === m) return;
+        inspectorMode = m;
+        chrome.storage?.local.set({ inspectorMode: m });
+        lightPage(null);
+        if (selectedElement) updateOverlay(selectedElement, { instant: true });
+        labelEl?.querySelector(`.pnt-insp-mode [aria-pressed="true"]`)?.focus({ preventScroll: true });
+      });
+      b.addEventListener("pointerenter", () => showTip(b));
+      b.addEventListener("pointerleave", hideTip);
+      sw.appendChild(b);
+    }
+    pane.appendChild(sw);
+    return pane;
+  }
+
+  // The card is as wide as its content, never past maxWidth. It is fixed, so
+  // near the viewport's right edge it would otherwise shrink to the room left
+  // and wrap; the width is pinned before it is placed.
+  function hugInspector() {
+    if (!labelEl) return;
+    labelEl.style.width = "max-content";
+    labelEl.style.width = Math.ceil(Math.min(INSPECTOR.maxWidth, labelEl.getBoundingClientRect().width)) + "px";
+  }
+
   function updateLabel(el, rect) {
     if (!labelEl) return;
-
-    const tag = el.tagName.toLowerCase();
-    const id = el.id ? `#${el.id}` : "";
-    const classes = Array.from(el.classList)
-      .filter((c) => !isOurs.name(c))
-      .slice(0, 3)
-      .map((c) => `.${c}`)
-      .join("");
-    const w = Math.round(rect.width);
-    const h = Math.round(rect.height);
-    const style = getComputedStyle(el);
-
-    // Line 1: tag, id, classes, dimensions
-    let line1 =
-      `<span class="pnt-label-tag">${tag}</span>` +
-      (id ? `<span class="pnt-label-id">${id}</span>` : "") +
-      (classes ? `<span class="pnt-label-class">${classes}</span>` : "") +
-      `<span class="pnt-label-size">${w} x ${h}</span>`;
-
-    const elHasText = hasDirectText(el);
-
-    // Text preview line: first ~40 chars of direct text content
-    let lineT = "";
-    if (elHasText) {
-      const text = getDirectText(el);
-      const preview = text.length > 40 ? text.slice(0, 40) + "\u2026" : text;
-      const escaped = preview.replace(/[&<>"']/g, (ch) => (
-        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
-      ));
-      lineT = `<div class="pnt-label-line pnt-line-text"><span class="pnt-label-text">"${escaped}"</span></div>`;
-    }
-
-    // Line 2: key computed properties
-    const props = [];
-    const display = style.display;
-    const position = style.position;
-    if (display && display !== "block") props.push(display);
-    if (position && position !== "static") props.push(`pos:${position}`);
-    // Font props only when element has direct text content
-    if (elHasText) {
-      if (style.fontSize) props.push(style.fontSize);
-      if (style.fontWeight && style.fontWeight !== "400" && style.fontWeight !== "normal") {
-        props.push(`w:${style.fontWeight}`);
-      }
-    }
-    // Accessibility hints
-    const role = el.getAttribute("role");
-    if (role) props.push(`role="${role}"`);
-    const ariaLabel = el.getAttribute("aria-label");
-    if (ariaLabel) props.push(`aria="${ariaLabel.slice(0, 20)}"`);
-    // Children count for containers
-    const childCount = el.children.length;
-    if (childCount > 0) props.push(`${childCount} child${childCount > 1 ? "ren" : ""}`);
-
-    let line2 = "";
-    if (props.length > 0) {
-      line2 = `<div class="pnt-label-line pnt-line-meta"><span class="pnt-label-prop">${props.join('<span class="pnt-label-sep"> · </span>')}</span></div>`;
-    }
-
-    // Visual line: background, text color, border, radius, shadow, opacity, cursor, transform, z-index
-    const visuals = [];
-
-    // Background color
-    const bg = style.backgroundColor;
-    if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") {
-      visuals.push(`bg:${colorSwatch(bg)}${formatColor(bg)}`);
-    }
-
-    // Text color (only when element has direct text)
-    if (elHasText && style.color) {
-      visuals.push(`color:${colorSwatch(style.color)}${formatColor(style.color)}`);
-    }
-
-    // Border (stroke)
-    const bw = {
-      top: parseFloat(style.borderTopWidth) || 0,
-      right: parseFloat(style.borderRightWidth) || 0,
-      bottom: parseFloat(style.borderBottomWidth) || 0,
-      left: parseFloat(style.borderLeftWidth) || 0,
-    };
-    const anyBorderWidth = bw.top || bw.right || bw.bottom || bw.left;
-    if (anyBorderWidth && style.borderTopStyle !== "none") {
-      const allWidthsEqual = bw.top === bw.right && bw.right === bw.bottom && bw.bottom === bw.left;
-      const allStylesEqual =
-        style.borderTopStyle === style.borderRightStyle &&
-        style.borderRightStyle === style.borderBottomStyle &&
-        style.borderBottomStyle === style.borderLeftStyle;
-      const allColorsEqual =
-        style.borderTopColor === style.borderRightColor &&
-        style.borderRightColor === style.borderBottomColor &&
-        style.borderBottomColor === style.borderLeftColor;
-      if (allWidthsEqual && allStylesEqual && allColorsEqual) {
-        visuals.push(
-          `border:${bw.top}px ${style.borderTopStyle} ${colorSwatch(style.borderTopColor)}${formatColor(style.borderTopColor)}`
-        );
-      } else {
-        visuals.push(`border:${bw.top}/${bw.right}/${bw.bottom}/${bw.left}px`);
-      }
-    }
-
-    // Border radius
-    const radii = [
-      style.borderTopLeftRadius,
-      style.borderTopRightRadius,
-      style.borderBottomRightRadius,
-      style.borderBottomLeftRadius,
-    ];
-    if (radii.some((v) => v && v !== "0px")) {
-      const allSame = radii.every((v) => v === radii[0]);
-      visuals.push(allSame ? `radius:${radii[0]}` : `radius:${radii.join(" ")}`);
-    }
-
-    // Box shadow
-    if (style.boxShadow && style.boxShadow !== "none") {
-      visuals.push(`shadow:${formatShadow(style.boxShadow)}`);
-    }
-
-    // Opacity (when < 1)
-    const opacity = parseFloat(style.opacity);
-    if (!Number.isNaN(opacity) && opacity < 1) {
-      visuals.push(`opacity:${opacity}`);
-    }
-
-    // Cursor (read without probe-mode override)
-    const cursor = getRealCursor(el);
-    if (cursor && cursor !== "auto" && cursor !== "default") {
-      visuals.push(`cursor:${cursor}`);
-    }
-
-    // Transform (when present)
-    if (style.transform && style.transform !== "none") {
-      visuals.push(`transform:${style.transform}`);
-    }
-
-    // Z-index (when explicitly set)
-    if (style.zIndex && style.zIndex !== "auto") {
-      visuals.push(`z:${style.zIndex}`);
-    }
-
-    let lineV = "";
-    if (visuals.length > 0) {
-      lineV = `<div class="pnt-label-line pnt-line-visual"><span class="pnt-label-prop">${visuals.join('<span class="pnt-label-sep"> · </span>')}</span></div>`;
-    }
-
-    // Line 3: breadcrumb path (up to 4 ancestors)
-    const crumbs = [];
-    let ancestor = el.parentElement;
-    while (ancestor && ancestor !== document.documentElement && crumbs.length < 4) {
-      const aTag = ancestor.tagName.toLowerCase();
-      const aId = ancestor.id ? `#${ancestor.id}` : "";
-      const aClass = Array.from(ancestor.classList)
-        .filter((c) => !isOurs.name(c))
-        .slice(0, 1)
-        .map((c) => `.${c}`)
-        .join("");
-      crumbs.unshift(aTag + aId + aClass);
-      if (ancestor.id) break; // ID is unique enough, stop
-      ancestor = ancestor.parentElement;
-    }
-    // The keyboard hints travel with the layout, as prototyped: the strip
-    // carries its own (see showToolbar), the bar's ride the breadcrumb row,
-    // and the pill's and the spine's are a caption under the readout — which
-    // is also where the bar's go when there is no breadcrumb to ride.
+    pictureToken++;
+    lightPage(null);
+    const d = collectDesign(el);
     const selected = el === selectedElement;
-    const layout = chromePrefs.selectionLayout;
-    const hintsInCrumb = selected && layout === "bottom" && crumbs.length > 0;
-    const hintsInCaption = selected && (layout === "edge" || layout === "beside" ||
-      (layout === "bottom" && crumbs.length === 0));
-
-    let line3 = "";
-    if (crumbs.length > 0) {
-      const path = crumbs.join('<span class="pnt-label-sep"> › </span>');
-      line3 = `<div class="pnt-label-line pnt-line-breadcrumb"><span class="pnt-label-marquee"><span class="pnt-label-breadcrumb pnt-marquee-inner">${path}<span class="pnt-label-sep">&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;</span>${path}</span></span>${hintsInCrumb ? `<span class="pnt-hints">${HINTS_HTML}</span>` : ""}</div>`;
+    labelEl.classList.toggle("pnt-insp-live", selected);
+    labelEl.style.width = "";
+    labelEl.textContent = "";
+    const sheet = el$("div", "pnt-insp-sheet");
+    sheet.appendChild(el$("div", "pnt-label-head", identityHtml(d)));
+    const table = sheetTable(d);
+    sheet.appendChild(table);
+    if (selected) {
+      labelEl.append(renderPicture(d, table), sheet);
+      labelEl.style.display = "";
+      hugInspector();
+    } else {
+      sheetRow(table, "Colour", readoutColours(d));
+      labelEl.appendChild(sheet);
     }
-
-    // Three parts — head, body, caption — rather than one wrapper, so the
-    // toolbar can mount between them (the strip sits under the identity) and
-    // survive every rewrite: a Select Parent hop rewrites the readout while
-    // the buttons stay exactly where they are. The nodes the layout pass
-    // measures are created once and kept.
-    const part = (cls, after) => {
-      let node = labelEl.querySelector(`:scope > .${cls}`);
-      if (!node) {
-        node = document.createElement("div");
-        node.className = cls;
-        if (after) after.after(node); else labelEl.appendChild(node);
-      }
-      return node;
-    };
-    const head = part("pnt-label-head");
-    const body = part("pnt-label-content", head.nextElementSibling?.id === "pnt-toolbar" ? head.nextElementSibling : head);
-    head.innerHTML = `<div class="pnt-label-line pnt-line-identity">${line1}</div>`;
-    body.innerHTML = lineT + line2 + lineV + line3;
-
-    const caption = labelEl.querySelector(":scope > .pnt-label-hints");
-    if (hintsInCaption) {
-      (caption || part("pnt-label-hints", body)).innerHTML = HINTS_HTML;
-    } else if (caption) {
-      caption.remove();
-    }
-
     // Visible so it can be measured; layoutChrome does the placing.
     labelEl.style.display = "";
   }
@@ -3548,7 +4187,7 @@
 
   // The rect the panel grows from and shrinks back to.
   function handoffOriginRect() {
-    const node = chromePrefs.selectionLayout === "edge" ? toolbarEl : labelEl;
+    const node = toolbarEl;
     if (!node || !node.isConnected) return null;
     const r = node.getBoundingClientRect();
     return r.width > 0 && r.height > 0 ? r : null;
@@ -3612,10 +4251,9 @@
       morphTimer = setTimeout(clearMorph, 260);
       return;
     }
-    const carded = chromePrefs.selectionLayout !== "edge";
-    morphEl = buildMorph(from, carded);
+    morphEl = buildMorph(from, false);
     const ride = morphEl.querySelector(".pnt-edit-morph-id");
-    const start = carded ? identityOffset(labelEl, labelEl && labelEl.querySelector(".pnt-line-identity")) : null;
+    const start = null;
     const end = identityOffset(editPanelEl, editPanelEl.querySelector(".pnt-edit-id"));
     if (ride && start) {
       ride.style.left = `${Math.round(start.x)}px`;
@@ -8000,6 +8638,7 @@
     // other click on the page, so anything missing gets its clicks eaten and
     // selects the element behind it instead.
     if (toolbarEl && toolbarEl.contains(e.target)) return;
+    if (labelEl && labelEl.contains(e.target)) return; // the selected inspector is interactive
     if (settingsButtonEl && settingsButtonEl.contains(e.target)) return;
     if (toastEl && toastEl.contains(e.target)) return;
     if (editPanelEl && editPanelEl.contains(e.target)) return;
@@ -8125,18 +8764,23 @@
   function deselectElement() {
     exitEditMode(); // and every deselection path ends editing — same reason
     stopRedline(); // every deselection path ends redline — it has no anchor
+    const was = selectedElement;
     selectedElement = null;
     if (overlayContainer) {
       overlayContainer.classList.remove("pnt-selected");
     }
     removeToolbar();
+    lightPage(null);
+    // The card outlives the selection as the hover readout of the same element.
+    if (was && probeActive && labelEl && was.isConnected) updateOverlay(was, { instant: true });
   }
 
   // ===== Toolbar =====
   // The keyboard ladder, made visible. Only what is actually bound: Option
   // measures from the selection, Escape steps back out. Copy, Screenshot and
   // Edit have no shortcut, so they carry no chip — a hint that lies is worse
-  // than none. Where the chips sit is the layout's business (see updateLabel).
+  // than none. They close the pill, after a hairline: the pill holds what you
+  // can do with the selection, the inspector only what it looks like.
   const HINTS_HTML = `<kbd class="pnt-kbd">⌥</kbd><span>measure</span><kbd class="pnt-kbd">esc</kbd>`;
 
   // The four actions, in the one order they ever appear. Edit and Select
@@ -8180,8 +8824,6 @@
       if (action.id === "parent") parentButtonEl = button;
     }
 
-    // The strip's hints, at its right end. Present in every layout, shown
-    // only Under the name — the others put theirs in the label.
     const hints = document.createElement("span");
     hints.className = "pnt-hints";
     hints.setAttribute("aria-hidden", "true");
@@ -8205,29 +8847,14 @@
     toolbarEl.addEventListener("focusin", over);
     toolbarEl.addEventListener("focusout", out);
 
-    mountToolbar();
+    // Its own fixed root; the solver places it under the inspector.
+    document.documentElement.appendChild(toolbarEl);
     updateParentButton();
 
     // Lock widths before placing: the toolbar has to be measured at its final
     // size, or it gets positioned against a width that then changes under it.
-    updateToolbarDensity(document.documentElement.clientWidth);
     lockButtonWidths();
-    lockCardWidth();
     layoutChrome(el, { newToolbar: true });
-  }
-
-  // Where the node goes is the whole difference between the layouts. Inside
-  // the label for the spine, the strip and the bar — so the solver sees one
-  // box and the buttons ride with the readout — and its own fixed root for the
-  // pill, which is placed under the element's edge by the solver's edge rule.
-  function mountToolbar() {
-    const layout = chromePrefs.selectionLayout;
-    const head = labelEl && labelEl.querySelector(":scope > .pnt-label-head");
-    labelEl.classList.toggle("pnt-with-actions", layout !== "edge");
-    if (layout === "beside") labelEl.prepend(toolbarEl);
-    else if (layout === "under" && head) head.after(toolbarEl);
-    else if (layout === "under" || layout === "bottom") labelEl.appendChild(toolbarEl);
-    else document.documentElement.appendChild(toolbarEl);
   }
 
   // ===== Tooltip =====
@@ -8258,23 +8885,13 @@
     const r = button.getBoundingClientRect();
     const w = tipEl.offsetWidth, h = tipEl.offsetHeight;
     let top, left, side;
-    if (!above && chromePrefs.selectionLayout === "beside") {
-      top = Math.max(M, Math.min(r.top + r.height / 2 - h / 2, vh - M - h));
-      left = r.right + GAP;
-      side = "right";
-      if (left + w > vw - M) {
-        left = Math.max(M, r.left - GAP - w);
-        side = "left";
-      }
-    } else {
-      top = r.top - GAP - h;
-      side = "above";
-      if (top < M) {
-        top = Math.min(r.bottom + GAP, vh - M - h);
-        side = "below";
-      }
-      left = Math.max(M, Math.min(r.left + r.width / 2 - w / 2, vw - w - M));
+    top = r.top - GAP - h;
+    side = "above";
+    if (top < M) {
+      top = Math.min(r.bottom + GAP, vh - M - h);
+      side = "below";
     }
+    left = Math.max(M, Math.min(r.left + r.width / 2 - w / 2, vw - w - M));
     tipEl.style.top = top + "px";
     tipEl.style.left = left + "px";
     tipEl.dataset.side = side;
@@ -8312,22 +8929,15 @@
     hideTip();
   }
 
-  // `rebuilding` is showToolbar's own call: the label was just rewritten for
-  // the new selection, hints included, and keeps them. Every other caller is
-  // ending the selection, and the label outlives it as the hover readout —
-  // so the hints and the width lock, which were the selection's, go too.
-  function removeToolbar(rebuilding) {
+  // `rebuilding` is showToolbar's own call, about to mount a fresh pill.
+  // deselectElement() is the one that turns the card back into the readout.
+  function removeToolbar(rebuilding) { // eslint-disable-line no-unused-vars
     hideTip();
     if (toolbarEl) {
       toolbarEl.remove();
       toolbarEl = null;
     }
     parentButtonEl = null;
-    if (labelEl && !rebuilding) {
-      labelEl.classList.remove("pnt-with-actions");
-      labelEl.style.width = "";
-      for (const node of labelEl.querySelectorAll(".pnt-hints, .pnt-label-hints")) node.remove();
-    }
   }
 
   // ===== Selector Builder =====

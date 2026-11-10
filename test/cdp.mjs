@@ -290,7 +290,10 @@ async function loadHarness(ws) {
 const rows = [];
 let failures = 0;
 
+// PNT_ONLY=handoff node test/cdp.mjs runs only the checks whose name contains it.
+const ONLY = process.env.PNT_ONLY;
 async function check(name, fn) {
+  if (ONLY && !name.includes(ONLY)) return;
   const errs = [];
   try {
     await fn((msg) => errs.push(msg));
@@ -1435,71 +1438,248 @@ try {
     if (seen.keys.includes("selector")) fail("the delta block ignored the field setting");
   });
 
-  // ===== Selection layouts =====
-  // One toolbar, four mounts (docs/SELECTION-LAYOUTS-PLAN.md). Each check
-  // switches the preference through storage — the path the settings page
-  // takes — with an element already selected, and reads where the actions
-  // landed. The layouts' geometry is the placement spec's business; these
-  // prove the DOM-bound half the spec cannot see.
+  // ===== Inspector (3.0) =====
+  // The card beside the element, the pill under the card, and the two levels:
+  // the hover readout and the selected picture. Geometry beyond "beside, and
+  // the pill under it" is the placement spec's business.
 
-  await check("layouts · each layout mounts the actions where it says", async (fail) => {
+  await check("inspector · beside the element, the pill under it", async (fail) => {
     await loadHarness(ws);
     const seen = await evaluate(ws, `
       window.__t.probeOn();
-      window.__t.select(".card h2");
-      const read = () => {
-        const label = document.getElementById("pnt-label");
-        const tb = document.getElementById("pnt-toolbar");
-        const kids = [...label.children];
-        return {
-          html: (document.documentElement.className.match(/pnt-layout-\\w+/) || [null])[0],
-          inside: !!tb && tb.parentElement === label,
-          index: kids.indexOf(tb),
-          last: kids.length - 1,
-          first: kids[0] && kids[0].className,
-          actions: [...tb.querySelectorAll("button")].map((b) => b.dataset.action),
-          labelsShown: [...tb.querySelectorAll("button span")].some((el) => el.offsetWidth > 0),
-          captionHints: !!label.querySelector(".pnt-label-hints"),
-          crumbHints: !!label.querySelector(".pnt-line-breadcrumb .pnt-hints"),
-          stripHints: getComputedStyle(tb.querySelector(".pnt-hints")).display !== "none",
-          withActions: label.classList.contains("pnt-with-actions"),
-          cardW: label.getBoundingClientRect().width,
-          barW: tb.querySelector(".pnt-bar").getBoundingClientRect().width,
-        };
+      const el = window.__t.select(".card h2");
+      await new Promise((r) => setTimeout(r, 60));
+      const label = document.getElementById("pnt-label");
+      const tb = document.getElementById("pnt-toolbar");
+      const e = el.getBoundingClientRect(), l = label.getBoundingClientRect(), t = tb.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      return {
+        own: tb.parentElement === document.documentElement,
+        actions: [...tb.querySelectorAll("button")].map((b) => b.dataset.action).join(),
+        roomRight: e.right + 6 + l.width <= vw - 4,
+        right: Math.round(l.left - e.right), sameLeft: Math.round(t.left - l.left), under: Math.round(t.top - l.bottom),
+        live: label.classList.contains("pnt-insp-live"),
+        picture: !!label.querySelector(".pnt-insp-pic .pnt-insp-cbox"),
+        modes: label.querySelectorAll(".pnt-insp-mode button").length,
+        width: Math.round(l.width),
       };
-      const out = {};
-      for (const id of ["edge", "beside", "under", "bottom"]) {
-        window.__t.prefs({ selectionLayout: id });
-        await new Promise((r) => setTimeout(r, 60));
-        out[id] = read();
+    `);
+    if (!seen.own) fail("the pill is not its own root");
+    if (seen.actions !== "copy,shot,edit,parent") fail(`actions are ${seen.actions}`);
+    if (seen.roomRight && seen.right !== 6) fail(`the card sits ${seen.right}px from the element's right edge`);
+    if (seen.sameLeft !== 0) fail(`the pill is ${seen.sameLeft}px off the card's left`);
+    if (seen.under !== 6) fail(`the pill is ${seen.under}px under the card`);
+    if (!seen.live) fail("the selected card does not take the pointer");
+    if (!seen.picture) fail("no picture of the element");
+    if (seen.modes !== 2) fail(`${seen.modes} mode buttons`);
+    if (seen.width > 420) fail(`the card is ${seen.width}px wide`);
+  });
+
+  await check("inspector · Map and Layers, remembered", async (fail) => {
+    const seen = await evaluate(ws, `
+      const label = document.getElementById("pnt-label");
+      label.querySelector('.pnt-insp-mode button[aria-label="Layers"]').click();
+      await new Promise((r) => setTimeout(r, 60));
+      const layers = { planes: label.querySelectorAll(".pnt-insp-plane").length, rows: label.querySelectorAll(".pnt-insp-lyl").length };
+      window.__t.esc();
+      window.__t.select(".card h2");
+      await new Promise((r) => setTimeout(r, 60));
+      const kept = !!label.querySelector(".pnt-insp-stack");
+      label.querySelector('.pnt-insp-mode button[aria-label="Map"]').click();
+      await new Promise((r) => setTimeout(r, 60));
+      return { ...layers, kept, back: !!label.querySelector(".pnt-insp-map") };
+    `);
+    if (!seen.planes || seen.planes !== seen.rows) fail(`${seen.planes} planes against ${seen.rows} labels`);
+    if (!seen.kept) fail("a new selection forgot Layers");
+    if (!seen.back) fail("Map did not come back");
+  });
+
+  await check("inspector · a lifted layer stays under the pointer", async (fail) => {
+    const seen = await evaluate(ws, `
+      const label = document.getElementById("pnt-label");
+      label.querySelector('.pnt-insp-mode button[aria-label="Layers"]').click();
+      await new Promise((r) => setTimeout(r, 260)); // the picture's own entrance first
+      const bands = [...label.querySelectorAll(".pnt-insp-band")];
+      const out = { bands: bands.length, planes: label.querySelectorAll(".pnt-insp-plane").length, steady: 0, lifted: 0, planeHit: 0 };
+      for (const band of bands) {
+        const before = band.getBoundingClientRect();
+        const x = before.left + before.width / 2, y = before.top + before.height / 2;
+        band.dispatchEvent(new PointerEvent("pointerenter"));
+        await new Promise((r) => setTimeout(r, 260)); // past the lift transition
+        const after = band.getBoundingClientRect();
+        const hit = document.elementFromPoint(x, y);
+        if (hit === band && after.top === before.top && after.height === before.height) out.steady++;
+        else out.why = [hit && (hit.className || hit.tagName), before.top, after.top, before.height, after.height, x, y];
+        if (hit && hit.closest(".pnt-insp-plane")) out.planeHit++;
+        if (label.querySelector(".pnt-insp-plane.pnt-on")) out.lifted++;
+        band.dispatchEvent(new PointerEvent("pointerleave"));
       }
-      window.__t.prefs({ selectionLayout: "edge" });
+      label.querySelector('.pnt-insp-mode button[aria-label="Map"]').click();
+      await new Promise((r) => setTimeout(r, 60));
       return out;
     `);
-    for (const [id, r] of Object.entries(seen)) {
-      if (r.html !== "pnt-layout-" + id) fail(`${id}: <html> carries ${r.html}`);
-      if (r.actions.join() !== "copy,shot,edit,parent") fail(`${id}: actions are ${r.actions.join()}`);
-      if (r.withActions !== (id !== "edge")) fail(`${id}: pnt-with-actions is ${r.withActions}`);
+    if (!seen.bands || seen.bands !== seen.planes) fail(`${seen.bands} bands for ${seen.planes} planes`);
+    if (seen.lifted !== seen.bands) fail(`only ${seen.lifted} of ${seen.bands} bands lifted a plane`);
+    if (seen.steady !== seen.bands) fail(`only ${seen.steady} of ${seen.bands} bands kept the pointer once lifted (${JSON.stringify(seen.why)})`);
+    if (seen.planeHit) fail(`${seen.planeHit} lifted planes took the pointer`);
+  });
+
+  await check("inspector · the sheet: a short name, a row per fact, colours in rows of six", async (fail) => {
+    const seen = await evaluate(ws, `
+      const many = document.createElement("div");
+      many.id = "many-fixture";
+      many.className = "a-very-long-generated-class-name css-9f3k2a Module_root__x7Qd1";
+      many.style.cssText = "width:300px;padding:8px;background:#fafafa;display:flex;flex-wrap:wrap;gap:4px";
+      for (let i = 0; i < 14; i++) { const s = document.createElement("i"); s.style.cssText = "width:16px;height:16px;background:rgb(" + (i * 17) + ",80,160)"; many.appendChild(s); }
+      document.body.prepend(many);
+      window.scrollTo(0, 0);
+      window.__t.esc();
+      window.__t.select("#many-fixture");
+      await new Promise((r) => setTimeout(r, 80));
+      const label = document.getElementById("pnt-label");
+      const who = label.querySelector(".pnt-insp-who");
+      const cells = [...label.querySelectorAll(".pnt-insp-cell")];
+      const tops = new Set(cells.map((c) => Math.round(c.getBoundingClientRect().top)));
+      const perRow = cells.filter((c) => Math.round(c.getBoundingClientRect().top) === Math.round(cells[0].getBoundingClientRect().top)).length;
+      const out = {
+        whoW: Math.round(who.getBoundingClientRect().width), clipped: (() => { const c = who.querySelector(".pnt-label-class"); return c.scrollWidth > c.clientWidth; })(), title: who.title,
+        rows: [...label.querySelectorAll(".pnt-insp-dr > .pnt-insp-k")].map((k) => k.textContent).join(),
+        icons: label.querySelectorAll(".pnt-insp-dr .pnt-insp-ki svg").length,
+        cells: cells.length, gridRows: tops.size, perRow,
+        width: Math.round(label.getBoundingClientRect().width),
+        paneLeft: label.querySelector(".pnt-insp-pane").getBoundingClientRect().left < label.querySelector(".pnt-insp-sheet").getBoundingClientRect().left,
+      };
+      label.querySelector('.pnt-insp-mode button[aria-label="Layers"]').click();
+      await new Promise((r) => setTimeout(r, 80));
+      const sws = [...label.querySelectorAll(".pnt-insp-lyl .pnt-insp-swb")];
+      const firstTop = Math.round(sws[0].getBoundingClientRect().top);
+      out.layerPerRow = sws.filter((b) => Math.round(b.getBoundingClientRect().top) === firstTop).length;
+      const w0 = label.getBoundingClientRect().width;
+      sws[0].dispatchEvent(new PointerEvent("pointerenter"));
+      out.read = label.querySelector(".pnt-insp-lsheet .pnt-insp-sect").textContent;
+      out.steady = label.getBoundingClientRect().width === w0;
+      sws[0].dispatchEvent(new PointerEvent("pointerleave"));
+      label.querySelector('.pnt-insp-mode button[aria-label="Map"]').click();
+      window.__t.esc();
+      many.remove();
+      window.__t.select(".card h2");
+      await new Promise((r) => setTimeout(r, 60));
+      return out;
+    `);
+    if (seen.whoW > 150) fail(`the name is ${seen.whoW}px wide`);
+    if (!seen.clipped) fail("a long name was not ellipsized");
+    if (!seen.title.includes("Module_root__x7Qd1")) fail(`the full name is not in the title: ${seen.title}`);
+    if (seen.rows !== "Size,Radius,Opacity,Colour") fail(`rows are ${seen.rows}`);
+    if (seen.icons !== 4) fail(`${seen.icons} row icons`);
+    if (seen.cells !== 15) fail(`${seen.cells} colours in the grid`);
+    if (seen.perRow !== 6 || seen.gridRows !== 3) fail(`the grid is ${seen.perRow} across in ${seen.gridRows} rows`);
+    if (seen.width > 420) fail(`the card is ${seen.width}px wide`);
+    if (!seen.paneLeft) fail("the pane is not left of the sheet");
+    if (seen.layerPerRow !== 6) fail(`a layer row holds ${seen.layerPerRow} swatches across`);
+    if (!/^#[0-9A-F]{6}/.test(seen.read)) fail(`hovering a layer swatch reads ${JSON.stringify(seen.read)}`);
+    if (!seen.steady) fail("the readout changed the card's width");
+  });
+
+  await check("inspector · Layers keeps white text readable, three ways", async (fail) => {
+    const seen = await evaluate(ws, `
+      const btn = document.createElement("div");
+      btn.id = "aid-fixture";
+      btn.style.cssText = "width:160px;padding:12px;background:#e11d48;color:#fff;font:600 14px sans-serif;border-radius:8px";
+      btn.textContent = "Follow";
+      document.body.prepend(btn);
+      window.scrollTo(0, 0);
+      const out = {};
+      for (const mode of ["ghost", "plate", "halo"]) {
+        window.__t.prefs({ inspectorLayerAid: mode });
+        window.__t.esc();
+        window.__t.select("#aid-fixture");
+        await new Promise((r) => setTimeout(r, 60));
+        const label = document.getElementById("pnt-label");
+        const layers = label.querySelector('.pnt-insp-mode button[aria-label="Layers"]');
+        if (layers.getAttribute("aria-pressed") !== "true") layers.click();
+        await new Promise((r) => setTimeout(r, 120));
+        const planes = [...label.querySelectorAll(".pnt-insp-plane")];
+        const text = planes[planes.length - 1], fill = planes[0];
+        out[mode] = {
+          planes: planes.length,
+          ghostOnText: text.querySelectorAll(".pnt-insp-ghost").length, ghostOnFill: fill.querySelectorAll(".pnt-insp-ghost").length,
+          plated: text.classList.contains("pnt-insp-plated"), plate: text.querySelector(".pnt-insp-glass").style.background,
+          fillPlated: fill.classList.contains("pnt-insp-plated"),
+          halo: [...text.querySelectorAll("[style*='text-shadow']")].filter((n) => getComputedStyle(n).textShadow !== "none").length,
+          leaks: [...label.querySelectorAll(".pnt-insp-plane *")].filter((n) => getComputedStyle(n).pointerEvents !== "none").length,
+        };
+      }
+      window.__t.prefs({ inspectorLayerAid: "ghost" });
+      document.getElementById("pnt-label").querySelector('.pnt-insp-mode button[aria-label="Map"]').click();
+      window.__t.esc();
+      btn.remove();
+      window.__t.select(".card h2");
+      await new Promise((r) => setTimeout(r, 60));
+      return out;
+    `);
+    for (const mode of ["ghost", "plate", "halo"]) {
+      if (seen[mode].planes !== 2) fail(`${mode}: ${seen[mode].planes} planes`);
+      if (seen[mode].leaks) fail(`${mode}: ${seen[mode].leaks} nodes on the planes take the pointer`);
     }
-    const { edge, beside, under, bottom } = seen;
-    if (edge.inside) fail("edge: the pill mounted inside the label");
-    if (!edge.captionHints || edge.crumbHints) fail("edge: the hints are not a caption");
-    if (!beside.inside || beside.index !== 0) fail(`beside: the spine is child ${beside.index}, not first`);
-    if (!beside.captionHints) fail("beside: no hints caption");
-    if (!under.inside || under.index !== 1 || under.first !== "pnt-label-head") fail(`under: the strip is child ${under.index} after ${under.first}`);
-    if (!under.stripHints || under.captionHints) fail("under: the hints are not in the strip");
-    if (!bottom.inside || bottom.index !== bottom.last) fail(`bottom: the bar is child ${bottom.index} of ${bottom.last}`);
-    if (!bottom.crumbHints || bottom.captionHints) fail("bottom: the hints are not in the breadcrumb row");
-    if (!bottom.labelsShown) fail("bottom: the bar's labels are hidden");
-    if (Math.abs(bottom.cardW - bottom.barW - 2) > 1) fail(`bottom: card ${bottom.cardW}px wide against a ${bottom.barW}px bar`);
-    for (const id of ["edge", "beside", "under"]) {
-      if (seen[id].labelsShown) fail(`${id}: a button label is showing in an icon layout`);
+    if (seen.ghost.ghostOnText !== 1 || seen.ghost.ghostOnFill) fail(`ghost: ${seen.ghost.ghostOnText} under the text, ${seen.ghost.ghostOnFill} under the fill`);
+    if (seen.ghost.plated || seen.ghost.halo) fail("ghost also plated or haloed");
+    if (!seen.plate.plated || !/rgb/.test(seen.plate.plate)) fail(`plate: the text plane has no plate (${seen.plate.plate})`);
+    if (seen.plate.fillPlated) fail("plate: the fill plane, readable as it is, was plated");
+    if (seen.plate.ghostOnText) fail("plate also drew a ghost");
+    if (!seen.halo.halo) fail("halo: the white text has no halo");
+    if (seen.halo.plated || seen.halo.ghostOnText) fail("halo also plated or ghosted");
+  });
+
+  await check("inspector · a colour finds its parts and copies", async (fail) => {
+    const seen = await evaluate(ws, `
+      const label = document.getElementById("pnt-label");
+      const chip = label.querySelector(".pnt-insp-chip, .pnt-insp-cell");
+      if (!chip) return { none: true };
+      chip.dispatchEvent(new PointerEvent("pointerenter"));
+      const lit = document.querySelectorAll("#pnt-overlay-container .pnt-insp-hl").length;
+      chip.dispatchEvent(new PointerEvent("pointerleave"));
+      const cleared = document.querySelectorAll("#pnt-overlay-container .pnt-insp-hl").length;
+      let text = null;
+      const real = navigator.clipboard.writeText.bind(navigator.clipboard);
+      navigator.clipboard.writeText = (t) => { text = t; return Promise.resolve(); };
+      chip.click();
+      await new Promise((r) => setTimeout(r, 30));
+      navigator.clipboard.writeText = real;
+      return { lit, cleared, text };
+    `);
+    if (seen.none) return fail("no colour to hover");
+    if (!seen.lit) fail("hovering a colour lit nothing on the page");
+    if (seen.cleared) fail("the highlight stayed after the pointer left");
+    if (!/^#[0-9A-F]{6}([0-9A-F]{2})?$|\(/.test(seen.text || "")) fail(`copied ${JSON.stringify(seen.text)}`);
+  });
+
+  await check("inspector · hover is the readout, and the readout only", async (fail) => {
+    const seen = await evaluate(ws, `
+      window.__t.esc();
+      await new Promise((r) => setTimeout(r, 30));
+      const label = document.getElementById("pnt-label");
+      return {
+        live: label.classList.contains("pnt-insp-live"),
+        picture: !!label.querySelector(".pnt-insp-pic"),
+        readout: label.querySelectorAll(".pnt-insp-sheet .pnt-insp-dr").length,
+        icons: label.querySelectorAll(".pnt-insp-dr .pnt-insp-ki svg").length,
+        pane: !!label.querySelector(".pnt-insp-pane"),
+        text: label.textContent,
+      };
+    `);
+    if (seen.live) fail("the hover card takes the pointer");
+    if (seen.picture) fail("the hover card still draws the picture");
+    if (seen.readout < 4) fail(`the hover readout has ${seen.readout} rows`);
+    if (seen.icons !== seen.readout) fail(`${seen.icons} row icons for ${seen.readout} rows`);
+    if (seen.pane) fail("the hover card has the picture's pane");
+    for (const word of ["child", "pos:", "display", "margin", "padding"]) {
+      if (seen.text.includes(word)) fail(`the readout says ${word}`);
     }
   });
 
-  await check("layouts · a tooltip names the icon and never moves the card", async (fail) => {
+  await check("inspector · a tooltip names the icon and never moves the card", async (fail) => {
     const seen = await evaluate(ws, `
-      window.__t.prefs({ selectionLayout: "under" });
+      window.__t.select(".card h2");
       await new Promise((r) => setTimeout(r, 60));
       const label = document.getElementById("pnt-label");
       const tip = document.getElementById("pnt-tip");
@@ -1512,15 +1692,7 @@ try {
         inside: label.contains(tip), clear: tr.bottom <= br.top || tr.top >= br.bottom,
         moved: before.top !== after.top || before.height !== after.height || before.width !== after.width };
       btn.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, relatedTarget: document.body }));
-      const hidden = !tip.classList.contains("pnt-tip-on");
-      // The bar's labels are on screen, so the bar asks for no tip.
-      window.__t.prefs({ selectionLayout: "bottom" });
-      await new Promise((r) => setTimeout(r, 60));
-      document.querySelector('#pnt-toolbar button[data-action="shot"]')
-        .dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
-      const labelledTip = tip.classList.contains("pnt-tip-on");
-      window.__t.prefs({ selectionLayout: "edge" });
-      return { ...shown, hidden, labelledTip };
+      return { ...shown, hidden: !tip.classList.contains("pnt-tip-on") };
     `);
     if (!seen.on) fail("no tooltip on pointerover");
     if (seen.text !== "Screenshot") fail(`the tooltip says ${JSON.stringify(seen.text)}`);
@@ -1528,30 +1700,23 @@ try {
     if (!seen.clear) fail("the tooltip covers the button it names");
     if (seen.moved) fail("showing the tooltip moved the card");
     if (!seen.hidden) fail("the tooltip stayed after pointerout");
-    if (seen.labelledTip) fail("a labelled button showed a tooltip");
   });
 
-  await check("layouts · Select Parent keeps the strip where it was", async (fail) => {
+  await check("inspector · Select Parent keeps the pill and rewrites the card", async (fail) => {
     const seen = await evaluate(ws, `
-      window.__t.prefs({ selectionLayout: "under" });
-      await new Promise((r) => setTimeout(r, 60));
       const label = document.getElementById("pnt-label");
       const tb = document.getElementById("pnt-toolbar");
       const tag = () => label.querySelector(".pnt-label-head .pnt-label-tag").textContent;
       const was = tag();
       tb.querySelector('button[data-action="parent"]').click();
       await new Promise((r) => setTimeout(r, 60));
-      const out = { was, now: tag(), sameNode: document.getElementById("pnt-toolbar") === tb,
-        index: [...label.children].indexOf(tb) };
-      window.__t.prefs({ selectionLayout: "edge" });
-      return out;
+      return { was, now: tag(), sameNode: document.getElementById("pnt-toolbar") === tb };
     `);
     if (seen.was === seen.now) fail(`the identity still reads ${seen.now}`);
     if (!seen.sameNode) fail("the hop rebuilt the toolbar");
-    if (seen.index !== 1) fail(`after the hop the strip is child ${seen.index}`);
   });
 
-  await check("layouts · the pill leaves an off-screen edge for the toolbar's slot", async (fail) => {
+  await check("placement · a tall selection keeps the pill on screen", async (fail) => {
     const seen = await evaluate(ws, `
       window.__t.esc();
       const tall = document.createElement("div");
@@ -2148,14 +2313,22 @@ try {
       out.antsOpacity = getComputedStyle(document.getElementById("pnt-ants")).opacity;
       const panelRect = panel.getBoundingClientRect();
       window.__t.esc();
-      await new Promise((r) => setTimeout(r, 40));
-      const back = document.getElementById("pnt-edit-morph");
-      out.backMorph = Boolean(back);
-      if (back) {
-        const b = back.getBoundingClientRect();
+      // The surface is built a frame after Escape and starts moving a frame
+      // after that, so a single sample at a fixed delay raced the frame clock
+      // (it failed about half the time, before 3.0 too). Poll instead: the
+      // claim is that it heads home, not when the first frame lands.
+      const t0 = performance.now();
+      let back = null;
+      while (performance.now() - t0 < 250) {
+        await new Promise((r) => requestAnimationFrame(r));
+        back = document.getElementById("pnt-edit-morph");
+        if (!back) continue;
+        out.backMorph = true;
         out.backOut = back.classList.contains("pnt-morph-out");
-        out.backHeadsHome = b.width < panelRect.width || near(b.width, bar.width);
+        const b = back.getBoundingClientRect();
+        if (b.width < panelRect.width - 1 || near(b.width, bar.width)) { out.backHeadsHome = true; break; }
       }
+      out.backMorph = Boolean(out.backMorph);
       await new Promise((r) => setTimeout(r, 300));
       out.backGone = !document.getElementById("pnt-edit-morph");
       out.labelBack = getComputedStyle(document.getElementById("pnt-label")).visibility;

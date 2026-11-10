@@ -708,35 +708,94 @@ body {
   padding: var(--pnt-sm);
 }
 
-/* The selection specimen's stage: the label above, the outlined card below,
-   with room under the card for the pill that hangs beneath its edge.
-   content.css lays the actions out inside the label for the other three
-   layouts, exactly as on a page. */
+/* The selection specimen's stage: the outlined card, and beside it the
+   inspector with the pill a pair-gap under it — the beside rule, by hand. */
 .sl-stage {
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: var(--pnt-gap-section);
-  padding-bottom: 20px;
+  gap: var(--pnt-sm);
   width: 100%;
 }
 
 .sl-el {
-  align-self: stretch;
-  max-width: 320px;
+  flex: 0 1 180px;
+  min-width: 0;
 }
 
-/* On the edge: the pill hangs under the card's bottom edge, its left 6px in
-   — the edge rule, drawn by hand. Class + id, to outrank the fixed rule. */
-.pnt-mock .sl-el > #pnt-toolbar {
+.sl-chrome {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pnt-sm);
+  min-width: 0;
+}
+
+/* The selection specimen is a filled card with pale text: the case Layers
+   needs help with, since pale text on a clear plane would vanish. */
+.an-sel.an-sel-fill {
+  background: var(--pnt-accent);
+}
+#chrome-mock .an-sel-fill .sp-element-title,
+#chrome-mock .an-sel-fill .sp-element-body {
+  color: var(--pnt-surface-0);
+}
+
+/* The picture: the card's two layers as hand-made miniatures, on the planes
+   content.css tilts. Sizes are what layersPicture computes for 180 × 72. */
+.sl-stack {
+  width: 96px;
+  height: 100px;
+}
+.sl-stack .pnt-insp-plane {
+  left: 6px;
+  width: 84px;
+  height: 34px;
+}
+.sl-stack .pnt-insp-glass {
+  border-radius: 5px;
+}
+.sl-plane-fill { top: 48px; z-index: 10; }
+.sl-plane-text { top: 18px; z-index: 11; --insp-lift: 6px; }
+.sl-mini {
   position: absolute;
-  left: calc(var(--pnt-ring) + 6px);
-  /* A gap under the card's bottom edge, as the solver places it since round
-     four; the beam reserves the pill's height below so nothing overlaps. */
-  top: calc(100% - var(--pnt-ring) + var(--pnt-sm));
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border-radius: 5px;
 }
-
-.pnt-mock .sl-el:has(> #pnt-toolbar) { margin-bottom: 38px; }
+.sl-mini-fill {
+  background: var(--pnt-accent);
+}
+.sl-mini-text span {
+  display: block;
+  height: 4px;
+  width: 60%;
+  border-radius: 2px;
+  background: var(--pnt-surface-0);
+}
+.sl-mini-text span + span {
+  width: 85%;
+}
+/* The three aids, as content.js draws them: the element's own fill, faint,
+   under the paint; a plate toned against the paint; or an outline on the
+   paint alone. */
+.sl-ghost {
+  display: none;
+  opacity: 0.55;
+}
+#chrome-mock[data-aid="ghost"] .sl-ghost {
+  display: block;
+}
+#chrome-mock[data-aid="plate"] #pnt-label .sl-plane-text .pnt-insp-glass {
+  background: color-mix(in srgb, var(--pnt-text-1) 85%, transparent);
+}
+#chrome-mock[data-aid="halo"] .sl-mini-text span {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--pnt-text-1) 78%, transparent);
+}
 
 .an-item {
   display: flex;
@@ -800,6 +859,7 @@ body {
 .pnt-mock #pnt-label {
   width: max-content;
   max-width: 100%;
+  pointer-events: none;
 }
 
 /* The gear is a specimen here, not a corner fixture. */
@@ -839,13 +899,11 @@ body {
    element's own attribute value against an ancestor's. Appearance and
    Selection share the anatomy sheet: Selection shows its lead specimen alone,
    the other two fading in place so nothing moves between the two. */
-.sp-rail:not([data-mode="theme"]):not([data-mode="select"]) .pnt-mock,
-.sp-rail[data-mode="select"] .pnt-mock .an-item:not(.an-selection),
+.sp-rail:not([data-mode="theme"]) .pnt-mock,
 .sp-rail:not([data-mode="measure"]) .sp-vig,
 .sp-rail:not([data-mode="edit"]) .ep-mock,
 .sp-rail:not([data-mode="copy"]) .sp-pay,
 .sp-rail[data-mode="theme"] [data-pv]:not([data-pv="theme"]),
-.sp-rail[data-mode="select"] [data-pv]:not([data-pv="select"]),
 .sp-rail[data-mode="measure"] [data-pv]:not([data-pv="measure"]),
 .sp-rail[data-mode="edit"] [data-pv]:not([data-pv="edit"]),
 .sp-rail[data-mode="copy"] [data-pv]:not([data-pv="copy"]) {
@@ -1098,3 +1156,11 @@ body {
    --pnt-font means the sans. */
 .sp-pay-out,
 .sp-pay-count { font-family: var(--pnt-font-mono); }
+
+/* The one line of explanation under the inspector's setting. */
+.sp-sub-note {
+  margin: var(--pnt-sm) 0 0;
+}
+#inspect-sheet {
+  margin-top: var(--pnt-lg);
+}

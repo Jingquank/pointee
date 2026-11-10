@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pointee",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Point at any element, copy a source pointer for your coding agent, edit it live — styles, text, design tokens, even WebGL shaders.",
   "permissions": [
     "activeTab",

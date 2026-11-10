@@ -35,7 +35,6 @@
         <p class="sp-wordmark"><b>Pointee</b><span>Settings</span></p>
         <ul class="sp-nav-list">
           <li><a href="#sec-theme" data-focus="theme">Appearance</a></li>
-          <li><a href="#sec-select" data-focus="select">Selection</a></li>
           <li><a href="#sec-measure" data-focus="measure">Measuring</a></li>
           <li><a href="#sec-edit" data-focus="edit">Editing</a></li>
           <li><a href="#sec-copy" data-focus="copy">Copying</a></li>
@@ -67,38 +66,29 @@
             setting, and switches with it.
           </p>
           <div class="sp-pills" role="radiogroup" aria-labelledby="appearance-legend" id="theme-pills"></div>
-          <p class="sp-saved" id="saved-appearance" role="status" aria-live="polite"></p>
-        </div>
-      </section>
-
-      <!-- The selection layouts: four arrangements of the same readout and
-           the same four actions, chosen in two design rounds. Each pill
-           carries a glyph of its arrangement so the row reads as a picture of
-           the choice; the rail redraws the real chrome in the one you pick. -->
-      <section class="sp-section" data-focus="select" id="sec-select" aria-labelledby="selection-legend">
-        <h2 class="sp-legend" id="selection-legend">Selection</h2>
-        <div class="sp-section-body">
-          <p class="sp-sub">
-            Where the four actions sit once you select an element. The readout is
-            the same in every layout; only the actions move — on the element's
-            edge as a pill, beside the readout's lines, under its name, or along
-            its bottom as a labelled bar.
-          </p>
-          <div class="sp-pills sp-layouts" role="radiogroup" aria-labelledby="selection-legend" id="layout-pills">
-            <button type="button" class="sp-pill" role="radio" data-set="selectionLayout" data-val="edge" aria-checked="false">
-              <svg class="sp-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><rect x="3" y="10" width="7" height="4" rx="2" fill="currentColor"/></svg><span>On the edge</span>
-            </button>
-            <button type="button" class="sp-pill" role="radio" data-set="selectionLayout" data-val="beside" aria-checked="false">
-              <svg class="sp-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><circle cx="4.5" cy="5.5" r="1.1" fill="currentColor"/><circle cx="4.5" cy="8" r="1.1" fill="currentColor"/><circle cx="4.5" cy="10.5" r="1.1" fill="currentColor"/><path d="M7.5 5.5h4M7.5 8h4M7.5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/></svg><span>Beside the lines</span>
-            </button>
-            <button type="button" class="sp-pill" role="radio" data-set="selectionLayout" data-val="under" aria-checked="false">
-              <svg class="sp-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4.5 5h7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/><circle cx="5" cy="8" r="1.1" fill="currentColor"/><circle cx="8" cy="8" r="1.1" fill="currentColor"/><circle cx="11" cy="8" r="1.1" fill="currentColor"/><path d="M4.5 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/></svg><span>Under the name</span>
-            </button>
-            <button type="button" class="sp-pill" role="radio" data-set="selectionLayout" data-val="bottom" aria-checked="false">
-              <svg class="sp-glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/><path d="M4.5 5h7M4.5 7.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/><rect x="1.5" y="10" width="13" height="4" rx="1.5" fill="currentColor"/></svg><span>Along the bottom</span>
-            </button>
+          <!-- One inspector preference, in the sheet register the other
+               sections use. It is about how Pointee draws, so it lives here. -->
+          <div class="sp-sheet" id="inspect-sheet">
+            <div class="sp-sheet-group">
+              <p class="sp-sheet-cat" aria-hidden="true">Inspector · Layers</p>
+              <div class="sp-spec">
+                <span class="sp-spec-label" id="lbl-layer-aid">Paint that blends into the card</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-layer-aid">
+                  <button type="button" role="radio" data-set="inspectorLayerAid" data-val="ghost">ghost fill</button>
+                  <button type="button" role="radio" data-set="inspectorLayerAid" data-val="plate">plate</button>
+                  <button type="button" role="radio" data-set="inspectorLayerAid" data-val="halo">halo</button>
+                </span>
+              </div>
+              <p class="sp-sub sp-sub-note">
+                Layers draws each kind of paint on a clear plane, so white text would
+                vanish on a light card. <strong>Ghost fill</strong> lays the element's own
+                background faintly under it; <strong>plate</strong> puts a grey plate under
+                that plane; <strong>halo</strong> outlines just the paint that would be lost.
+              </p>
+            </div>
           </div>
-          <p class="sp-saved" id="saved-selection" role="status" aria-live="polite"></p>
+          <p class="sp-saved" id="saved-appearance" role="status" aria-live="polite"></p>
         </div>
       </section>
 
@@ -394,7 +384,6 @@
       <h2 class="sp-legend">Preview
         <span class="sp-tag-slot">
           <span class="sp-tag" data-pv="theme">appearance</span>
-          <span class="sp-tag" data-pv="select">selection</span>
           <span class="sp-tag" data-pv="measure">measuring</span>
           <span class="sp-tag" data-pv="edit">editing</span>
           <span class="sp-tag" data-pv="copy">copying</span>
@@ -405,12 +394,7 @@
       <div class="sp-pv-slot">
         <p class="sp-sub" data-pv="theme">
           Every surface the theme paints, piece by piece — a selection with its
-          label and actions, the hover outline, the gear.
-        </p>
-        <p class="sp-sub" data-pv="select">
-          A selection with its label and its four actions, drawn in the layout
-          you pick — the real chrome, in the theme above. Click a pill and it
-          redraws.
+          inspector and actions, the hover outline, the gear.
         </p>
         <p class="sp-sub" data-pv="measure">
           A held-Option measurement, drawn to scale: gaps, dashed extension
@@ -440,48 +424,58 @@
         <div class="pnt-mock" id="chrome-mock">
 
           <!--
-            The selection specimen: the real label and toolbar with the markup
-            updateLabel() and showToolbar() build, mounted the way content.js
-            mounts them for the chosen layout — settings.js moves the toolbar
-            node and the hints (paintLayout) — over a card wearing the
-            selection outline. First and full width, so it leads the
-            Appearance sheet and is the Selection preview on its own; the
-            other specimens fade while the pointer is in that section.
-
-            Kept short on purpose: #pnt-label is white-space: nowrap, so a
-            longer readout would overflow the rail rather than wrap.
+            The selection specimen: the real inspector and pill, with the
+            markup content.js builds for a selection (the sheet, with Layers in its pane), set
+            beside a card wearing the selection outline, the pill under the
+            inspector — the 3.0 arrangement, drawn by hand. The picture is a
+            hand-made miniature of the card's two layers; on a page they are live
+            copies. The card is filled, with pale text, so its text layer is the
+            case the Layers setting below exists for, and the text plane follows
+            that setting (data-aid on the mock, written by settings.js). The
+            hex under each swatch is filled in by settings.js from the theme.
           -->
           <div class="an-item an-span an-selection">
-            <p class="an-cap" aria-hidden="true">Selection · <span id="an-layout-name">On the edge</span></p>
+            <p class="an-cap" aria-hidden="true">Selection</p>
             <div class="sl-stage" aria-hidden="true">
-              <div id="pnt-label">
-                <div class="pnt-label-head">
-                  <div class="pnt-label-line pnt-line-identity">
-                    <span class="pnt-label-tag">div</span
-                    ><span class="pnt-label-class">.card</span>
-                    <span class="pnt-label-size">320 × 208</span>
-                  </div>
-                </div>
-                <div class="pnt-label-content">
-                  <div class="pnt-label-line pnt-line-meta">
-                    <span class="pnt-label-prop">flex</span>
-                    <span class="pnt-label-sep">·</span>
-                    <span class="pnt-label-prop">column</span>
-                  </div>
-                  <div class="pnt-label-line pnt-line-visual">
-                    <span class="pnt-label-prop"><span class="pnt-color-swatch" style="background-color:#ffffff"></span>#ffffff</span>
-                    <span class="pnt-label-sep">·</span>
-                    <span class="pnt-label-prop">radius 12px</span>
-                  </div>
-                  <div class="pnt-label-line pnt-line-breadcrumb pnt-label-breadcrumb">
-                    <span>div.grid <span class="pnt-label-sep">›</span> <span class="pnt-label-tag">div</span></span>
-                  </div>
-                </div>
-              </div>
               <div class="an-beam sl-el">
-                <div class="an-sel">
+                <div class="an-sel an-sel-fill">
                   <span class="sp-element-title">Pro Plan</span>
                   <span class="sp-element-body">For teams that need more.</span>
+                </div>
+              </div>
+              <div class="sl-chrome">
+                <div id="pnt-label" class="pnt-insp-live">
+                  <div class="pnt-insp-pane">
+                    <div class="pnt-insp-pic">
+                      <div class="pnt-insp-stack sl-stack">
+                        <div class="pnt-insp-plane sl-plane-fill"><div class="pnt-insp-glass"></div><div class="sl-mini sl-mini-fill"></div></div>
+                        <div class="pnt-insp-plane sl-plane-text"><div class="pnt-insp-glass"></div><div class="sl-mini sl-mini-fill sl-ghost"></div><div class="sl-mini sl-mini-text"><span></span><span></span></div></div>
+                      </div>
+                    </div>
+                    <span class="pnt-insp-mode">
+                        <button type="button" tabindex="-1" aria-pressed="false" aria-label="Map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button>
+                        <button type="button" tabindex="-1" aria-pressed="true" aria-label="Layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></button>
+                      </span>
+                  </div>
+                  <div class="pnt-insp-sheet">
+                    <div class="pnt-label-head">
+                      <div class="pnt-label-line pnt-line-identity"><span class="pnt-insp-who"><span class="pnt-label-tag">div</span><span class="pnt-label-class">.card</span></span></div>
+                    </div>
+                    <div class="pnt-insp-table">
+                      <div class="pnt-insp-dr"><span class="pnt-insp-ki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg></span><span class="pnt-insp-k">Size</span><div class="pnt-insp-dv"><span class="pnt-insp-v">180 × 72</span></div></div>
+                      <div class="pnt-insp-dr"><span class="pnt-insp-ki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-7a9 9 0 0 1 9-9h7"/></svg></span><span class="pnt-insp-k">Radius</span><div class="pnt-insp-dv"><span class="pnt-insp-v">10</span></div></div>
+                      <div class="pnt-insp-dr"><span class="pnt-insp-ki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg></span><span class="pnt-insp-k">Opacity</span><div class="pnt-insp-dv"><span class="pnt-insp-v">100%</span></div></div>
+                      <div class="pnt-insp-dr"><span class="pnt-insp-ki"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span><span class="pnt-insp-k">Layers</span><div class="pnt-insp-dv">
+                        <div class="pnt-insp-lsheet">
+                          <div class="pnt-insp-sect"><span>2 layers</span><span>2 colours</span></div>
+                          <div class="pnt-insp-lylist">
+                            <div class="pnt-insp-lyl pnt-on"><span class="pnt-insp-rl">text</span><span class="pnt-insp-sws"><span class="pnt-insp-swb" data-token="--pnt-surface-0"><span class="pnt-insp-sw" style="--insp-sw:var(--pnt-surface-0)"></span><span class="pnt-insp-hex"></span></span></span></div>
+                            <div class="pnt-insp-lyl"><span class="pnt-insp-rl">fill</span><span class="pnt-insp-sws"><span class="pnt-insp-swb" data-token="--pnt-accent"><span class="pnt-insp-sw" style="--insp-sw:var(--pnt-accent)"></span><span class="pnt-insp-hex"></span></span></span></div>
+                          </div>
+                        </div>
+                      </div></div>
+                    </div>
+                  </div>
                 </div>
                 <div id="pnt-toolbar">
                   <div class="pnt-bar">

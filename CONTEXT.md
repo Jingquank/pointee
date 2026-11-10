@@ -35,24 +35,50 @@ outline come up to the accent at the ring weight and crawling — chosen in
 round two of the brand directions over a ring, corner brackets and a glow.
 
 **Selection chrome** — everything drawn for a selection besides the outline:
-the info label and the toolbar, placed together by one solver so they cannot
+the inspector and the toolbar, placed together by one solver so they cannot
 collide. Whether they are one card or two pieces is a design choice, not a
 change of meaning.
 
-**Info label** — the readout: identity, text, layout, paint, breadcrumb. Shown
-on hover as well as on selection. Not interactive.
-_Avoid_: info panel (a panel is the thing that edits), tooltip.
+**Inspector** — the readout of what was *designed* on the element under the
+pointer: its visual properties, nothing about how it is built. Two levels.
+On hover, the *readout*: the name, the size, the typeface and size (only when
+the element is text), the opacity, the corner radius, and every colour used
+anywhere inside the element. On selection, the *picture*: the same things and
+no others, drawn rather than written — the typeface's name set in that
+typeface, a frame drawn with the element's radius and stroke, the colours as
+swatches to copy, each pointing back at the part of the element that wears it.
+Spacing is left out on purpose, because Redline measures it; so are display,
+position and child counts, which describe construction, not design. Each fact
+is said once (the rendered face, not the face and its stack). Renamed in 3.0.
+Both levels are laid out as a *sheet*: the name — a code name, so it is held
+to a fixed width and ellipsized — then one row per fact (Size, Radius,
+Opacity, Type, Colour), an icon and a label before each. Selection adds a
+*pane* to the sheet's left holding the picture and the switch between its two
+forms: **Map**, a live scaled copy of the element, and **Layers**, one tilted
+plane per kind of paint (shadow, fill, image, stroke, text, icon), where the
+sheet's last row becomes one row per layer.
+
+**Layer aid** — how Layers keeps paint readable on a clear plane, where white
+text would otherwise vanish on a light card. One setting
+(`inspectorLayerAid`), three values: *ghost fill* (the default: the element's
+own fill, faint, under the text, icon and stroke planes), *plate* (a grey
+plate under a plane whose paint would be lost, toned for that paint), and
+*halo* (the plane stays clear; only the paint that would be lost is outlined).
+_Avoid_: info label (the name until 3.0), info panel (a panel is the thing that
+edits), tooltip.
 
 **Toolbar** — the selection's actions: Copy Code, Screenshot, Edit, Select
 Parent. Shown only while something is selected; never clipped, whatever the
-viewport; drawn in the chosen selection layout.
+viewport. Since 3.0, a separate capsule directly under the inspector — the two
+are placed as one unit but stay two surfaces.
 _Avoid_: action bar, bar.
 
-**Selection layout** — where the toolbar sits relative to the info label: on
-the element's edge as a pill, beside the readout's lines as a spine, under
-the identity as a strip, or along the card's bottom as a bar. A preference;
-the readout is the same in all four.
-_Avoid_: mode (a mode changes what the tool does; a layout changes where it is).
+**Selection layout** — retired in 3.0. There were four (pill on the element's
+edge, spine, strip, bar) and a preference to choose between them; now there is
+one arrangement and no preference: the toolbar is its own capsule directly
+under the inspector, so on a large element the actions are where the readout
+is, not somewhere along its edge.
+_Avoid_: as a live term — there is nothing left to choose.
 
 **Tooltip** — the name of an icon-only action, or the full name of a token
 whose capsule had to truncate it, drawn in its own root beside the surface it
@@ -97,7 +123,7 @@ tooltip carries a name the capsule had to cut short.
 
 **Handoff** — the motion between Selection and Edit Mode: the toolbar's
 surface grows into the panel and shrinks back. The origin is the toolbar in
-whichever selection layout is in force.
+its capsule under the inspector.
 _Avoid_: transition (too general), morph (the mechanism, not the thing).
 
 **Tether** — what says "this panel edits that element" in Edit Mode, once the
