@@ -1,7 +1,7 @@
 # Selection chrome — round one
 
 The info label and the toolbar, redesigned. Written 2026-09-06 after a short
-interview; the vocabulary it uses is in `CONTEXT.md` (*selection chrome*,
+interview; the vocabulary it uses is in `GLOSSARY.md` (*selection chrome*,
 *info label*, *toolbar*). This is the first design round for this surface —
 the six rounds before it touched the edit panel, the settings page and the
 brand.
@@ -83,5 +83,5 @@ committed as `test/selection-chrome-prototypes.html`.
 Name a number, or a hybrid — "01's card with 08's action bar". The winner's
 structure decides how much of `computeChromeLayout` and `test/placement.mjs`
 is revised; the winner's action register decides the toolbar markup; the
-CONTEXT.md entries for *info label* and *toolbar* are updated if the winner
+GLOSSARY.md entries for *info label* and *toolbar* are updated if the winner
 changes what either one is.

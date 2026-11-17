@@ -186,7 +186,7 @@ Two pages let you watch the chrome without a rebuild — serve the repo over HTT
 node icons/generate-icons.mjs   # icons/ from assets/icon.png; the no-outline set lands in assets/
 ```
 
-The words the code and the docs share are in [CONTEXT.md](CONTEXT.md). The design system —
+The words the code and the docs share are in [GLOSSARY.md](GLOSSARY.md). The design system —
 brand, type, tokens, motion, every surface, and the rules that don't move — is
 [DESIGN.md](DESIGN.md); the decisions behind it are in [docs/adr](docs/adr).
 

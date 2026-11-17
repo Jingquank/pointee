@@ -1,4 +1,4 @@
-# Context
+# Glossary
 
 The vocabulary this codebase uses for itself. Terms here are the ones that turn
 out to be load-bearing — where using the wrong word leads to the wrong design,

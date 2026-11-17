@@ -3,7 +3,7 @@
 How Pointee looks, and why. Every colour, typeface, radius, shadow and duration
 in the chrome is a token in `tokens.css`; every surface is drawn from those
 tokens and nothing else; and a handful of rules underneath do not move whatever
-the surfaces do. This document is the contract for all of it. `CONTEXT.md` holds
+the surfaces do. This document is the contract for all of it. `GLOSSARY.md` holds
 the vocabulary; `docs/adr/` the decisions that were hard enough to reverse to
 deserve a record; `docs/POINTEE-PLAN.md` the plan the 2.0 overhaul followed.
 

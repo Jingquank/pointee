@@ -18,7 +18,7 @@ edge" is the default.
 | Hints | As prototyped, per layout: a caption line for Beside and Edge; the strip's right end for Under; the breadcrumb row for Bottom. |
 | Hover | The readout alone, identical in every layout. Beside shows no spine column on hover — the column exists only while selected. |
 
-## Vocabulary (to `CONTEXT.md`)
+## Vocabulary (to `GLOSSARY.md`)
 
 **Selection layout** — where the toolbar sits relative to the info label:
 on the element's edge as a pill, beside the readout's lines as a spine, under
@@ -81,7 +81,7 @@ reachable by `data-action`, the label's box does not change when a tooltip
 shows) and one for the fallback (an element taller than the viewport still
 shows the pill). `tokens.mjs` keeps the settings page honest.
 
-**8. Docs.** `CONTEXT.md` as above; `README.md`'s How-it-works and Settings;
+**8. Docs.** `GLOSSARY.md` as above; `README.md`'s How-it-works and Settings;
 `DESIGN.md`'s Toolbar and Tether entries and the placement rule;
 `test/PLACEMENT-PLAN.md` gains the straddle strategy.
 

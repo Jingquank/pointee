@@ -49,7 +49,7 @@
   let editPanelPos = null;
   // The panel is attached — flush against the selected element's facing edge
   // and following it — until the user drags it, after which it floats where it
-  // was put. CONTEXT.md, Edit panel.
+  // was put. GLOSSARY.md, Edit panel.
   let editPanelAttached = false;
   let editPanelDragged = false;
   let editPopoverEl = null;
@@ -1836,7 +1836,7 @@
         panel.y < box.y + box.h && panel.y + panel.h > box.y) return result;
 
     // An attached panel needs no run: the tick it sits against is the
-    // association (CONTEXT.md, Tether). Attached is geometric — the panel abuts
+    // association (GLOSSARY.md, Tether). Attached is geometric — the panel abuts
     // one edge of the clearance box, within a stub of it along that edge's
     // normal, overlapping the edge's span — so it holds for an element wider
     // than the panel's reach, where any centre-facing heuristic would pick a

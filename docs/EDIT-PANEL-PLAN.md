@@ -38,9 +38,9 @@ retreat, or stay.
 | Blocked-sheet fetch | **Kept this round.** Stepping no longer needs it; naming still does. Revisit when page values have shipped and its hit rate is known. |
 | Packaging | **Three galleries in `test/`, each also published as an artifact.** Built in parallel, reviewed in order — scrollbar, panel, transition — because each winner wears the previous one. |
 | Baseline | The current panel, rendered in the harness in Light and Dark, embedded at the top of each gallery. |
-| Docs | ADR 0004 written. `CONTEXT.md` gains *Page values*. DESIGN.md updated after the winners are built, not before. |
+| Docs | ADR 0004 written. `GLOSSARY.md` gains *Page values*. DESIGN.md updated after the winners are built, not before. |
 
-## Vocabulary (to `CONTEXT.md`)
+## Vocabulary (to `GLOSSARY.md`)
 
 **Page values** — already added. The distinct values a property actually
 takes on this page, read off the elements that carry them. A scale a stepper
@@ -185,7 +185,7 @@ classes, with `renderTether` no longer instant on entry; the reverse on exit;
 the reduced-motion entries added.
 
 **6. Docs.** DESIGN.md §2 (type), §6 (Edit panel, Scrollbar), the Edit Mode
-section (page values, the stepper), §8 (history: round four). `CONTEXT.md`
+section (page values, the stepper), §8 (history: round four). `GLOSSARY.md`
 as above.
 
 ## Verification
@@ -211,7 +211,7 @@ In order, each its own commit on 2026-09-06: the overflow fix (`987e0f4`),
 the rail (`adf952e`), the type scale (`4be46f9`), the panel (`d50f1a0`), page
 values with the rung list and the hash guard (`27c066a`), and the handoff
 (`16938fb`).
-DESIGN.md §2, §5, §6 and §8 and the Edit Mode section, and CONTEXT.md's
+DESIGN.md §2, §5, §6 and §8 and the Edit Mode section, and GLOSSARY.md's
 *Edit panel*, *Token family*, *Tooltip*, *Page values*, *Capsule*, *Rung
 list* and *Handoff*, describe what shipped.
 

@@ -11,7 +11,7 @@
 
 Branch `feat/pointee`, off `main` at 1.5.0. Written 2026-09-05 after a
 decision-by-decision interview; every row in §1 was put to the author and
-answered. This document is the plan. `CONTEXT.md` holds the vocabulary,
+answered. This document is the plan. `GLOSSARY.md` holds the vocabulary,
 `docs/adr/` the two decisions that were hard enough to reverse to deserve a
 record, and `DESIGN.md` — rewritten in Phase 6 — becomes the standing contract.
 
@@ -125,7 +125,7 @@ author draws one.
 
 **Choosing.** A hybrid is a legitimate answer — "03's material with 06's
 toolbar" — and is recorded as such. The winner is named in a commit, its
-terms enter `CONTEXT.md`, its values become the reference theme in
+terms enter `GLOSSARY.md`, its values become the reference theme in
 `tokens.css`, and the gallery stays in `test/` as the round's record.
 
 ---
@@ -272,7 +272,7 @@ their swatches from their own token block.
 **`README.md`** — new banner, agent-agnostic first line, a compatibility line,
 new screenshots, the store link, `pointee` clone path.
 **`PRIVACY.md`** — name, date, fonts bundled, Google Fonts paragraph removed.
-**`CONTEXT.md`** — the winner's terms; any surface that merged or moved.
+**`GLOSSARY.md`** — the winner's terms; any surface that merged or moved.
 **`test/PLACEMENT-PLAN.md`** — names, and the revision if the piece count changed.
 **`docs/adr/`** — 0001 moved to *accepted* once the strict-CSP check is
 observed; 0002 stands; a 0003 if the winner changes the chrome's structure.
