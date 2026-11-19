@@ -1859,6 +1859,266 @@ try {
     if (!r.after.done || r.after.loading) fail(`after the capture: done=${r.after.done} loading=${r.after.loading}`);
   });
 
+  // ===== Screenshot: framing, the studio, stitching =====
+  // The camera now frames the element (shot.js) and opens the studio. The
+  // harness has no service worker, so these run the renderer fallback for the
+  // pixels — except the stitch case, which stands in for the worker with a
+  // capture whose every row encodes its own document Y, so the stitched
+  // picture can be read back row by row.
+  const SHOT_DEFAULTS = `({ shotBackdrop: "colour", shotTone: "light", shotPadding: "s", shotCorners: "match",
+    shotFrameCorners: "12", shotShadow: "soft", shotScale: "2", shotIsolate: "on", shotStudio: "on" })`;
+  const PIXEL = `
+    const pixel = async (blob, x, y) => {
+      const bmp = await createImageBitmap(blob);
+      const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+      const ctx = c.getContext("2d"); ctx.drawImage(bmp, 0, 0);
+      return Array.from(ctx.getImageData(x, y, 1, 1).data);
+    };
+  `;
+
+  await check("screenshot · the clipboard gets the element framed: padding, 2x, rounded backdrop", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      const el = window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 80));
+      const rect = el.getBoundingClientRect();
+      ${SHOOT}
+      ${PIXEL}
+      const corner = blob ? await pixel(blob, 0, 0) : null;
+      const middle = blob ? await pixel(blob, Math.floor(shot.w / 2), Math.floor(shot.h / 2)) : null;
+      const studio = Boolean(document.getElementById("pnt-shot-studio"));
+      window.__t.esc();
+      window.__t.esc();
+      return { ...shot, ew: rect.width, eh: rect.height, corner, middle, studio };
+    `);
+    if (r.toast.startsWith("Failed")) return fail(r.toast);
+    const want = [Math.round((r.ew + 48) * 2), Math.round((r.eh + 48) * 2)];
+    if (Math.abs(r.w - want[0]) > 1 || Math.abs(r.h - want[1]) > 1) fail(`the PNG is ${r.w}×${r.h}, wanted ${want.join("×")}`);
+    if (!r.corner || r.corner[3] !== 0) fail(`the backdrop's corner is not clipped: ${r.corner}`);
+    if (!r.middle || r.middle[3] !== 255) fail(`the middle of the shot is not opaque: ${r.middle}`);
+    if (!r.studio) fail("the studio did not open after the shot");
+  });
+
+  await check("studio · every control redraws, Set as default saves, Escape closes only the studio", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 80));
+      ${SHOOT}
+      const out = {};
+      const st = document.getElementById("pnt-shot-studio");
+      if (!st) return { missing: true };
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const q = (sel) => st.querySelector(sel);
+      const pv = q(".pnt-ss-cam canvas");
+      out.status = q(".pnt-ss-status").textContent;
+      out.copyDisabled = q('[data-ss="copy"]').disabled;
+      out.w0 = parseFloat(pv.style.width);
+      q('[data-key="shotPadding"][data-val="l"]').click();
+      out.w1 = parseFloat(pv.style.width);
+      out.copyArmed = !q('[data-ss="copy"]').disabled;
+      q('[data-key="shotBackdrop"][data-val="grid"]').click();
+      out.grid = q('[data-key="shotBackdrop"][data-val="grid"]').getAttribute("aria-checked");
+      q('[data-ss="tone"]').click();
+      out.tone = q('[data-ss="tone"]').getAttribute("aria-pressed");
+      q('[data-key="shotShadow"][data-val="none"]').click();
+      out.pct0 = q('[data-z="toggle"]').textContent;
+      q('[data-z="in"]').click();
+      out.pct1 = q('[data-z="toggle"]').textContent;
+      q('[data-ss="default"]').click();
+      await new Promise((r) => setTimeout(r, 30));
+      const store = JSON.parse(localStorage.getItem("pnt-harness-store") || "{}");
+      out.saved = [store.shotBackdrop, store.shotPadding, store.shotTone, store.shotShadow].join(",");
+      window.__t.esc();
+      out.closed = !document.getElementById("pnt-shot-studio");
+      out.stillSelected = Boolean(document.querySelector(".pnt-selected"));
+      window.__t.esc();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return out;
+    `);
+    if (r.missing) return fail("the studio did not open");
+    if (!/Copied/.test(r.status)) fail(`the studio opened saying ${JSON.stringify(r.status)}`);
+    if (!r.copyDisabled) fail("Copy was armed before anything changed");
+    if (Math.abs(r.w1 - r.w0 - 112) > 1) fail(`padding L grew the preview by ${r.w1 - r.w0}px, not 112`);
+    if (!r.copyArmed) fail("a change did not arm Copy");
+    if (r.grid !== "true") fail("the grid tile did not take");
+    if (r.tone !== "true") fail("the tone button did not flip to dark");
+    if (r.pct0 === r.pct1) fail(`zoom in left the zoom at ${r.pct0}`);
+    if (r.saved !== "grid,l,dark,none") fail(`Set as default stored ${r.saved}`);
+    if (!r.closed) fail("Escape did not close the studio");
+    if (!r.stillSelected) fail("Escape closed the studio and the selection with it");
+  });
+
+  await check("studio · a size Chrome cannot export is disabled, and the choice steps down", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set({ ...${SHOT_DEFAULTS}, shotScale: "3" });
+      const tall = document.createElement("div");
+      tall.id = "tall-studio";
+      tall.style.cssText = "height:30000px;width:200px;margin:24px;background:#dde";
+      document.body.prepend(tall);
+      window.scrollTo(0, 0);
+      const rect = tall.getBoundingClientRect();
+      tall.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 5 }));
+      await new Promise((r) => setTimeout(r, 80));
+      ${SHOOT}
+      const st = document.getElementById("pnt-shot-studio");
+      const out = { h: shot.h };
+      if (st) {
+        out.x3 = st.querySelector('[data-key="shotScale"][data-val="3"]').disabled;
+        out.x2 = st.querySelector('[data-key="shotScale"][data-val="2"]').getAttribute("aria-checked");
+        out.mini = !st.querySelector(".pnt-ss-mini").hidden;
+      }
+      window.__t.esc();
+      window.__t.esc();
+      tall.remove();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return out;
+    `);
+    if (!r.h || r.h > 65535) fail(`the PNG is ${r.h}px tall`);
+    if (r.x3 !== true) fail("3x stayed enabled for a 30,000px element");
+    if (r.x2 !== "true") fail("the choice did not step down to 2x");
+  });
+
+  await check("screenshot · real pixels: a tall element is stitched, the overlay hidden, the page put back", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set({ ...${SHOT_DEFAULTS}, shotStudio: "off" });
+      const tall = document.createElement("div");
+      tall.id = "stitch-shot";
+      tall.style.cssText = "height:2600px;width:300px;margin:40px;background:#fff";
+      document.body.prepend(tall);
+      const bar = document.createElement("div");
+      bar.id = "stitch-bar";
+      bar.style.cssText = "position:fixed;top:0;left:0;right:0;height:90px;z-index:5;background:red";
+      document.body.appendChild(bar);
+      window.scrollTo(0, 0);
+      const rect = tall.getBoundingClientRect();
+      tall.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 100 }));
+      await new Promise((r) => setTimeout(r, 80));
+      const docTop = tall.getBoundingClientRect().top + scrollY;
+      const realSend = chrome.runtime.sendMessage;
+      const log = { grabs: 0, chromeShown: 0, barShown: 0 };
+      chrome.runtime.id = "harness";
+      chrome.runtime.sendMessage = async (msg) => {
+        if (!msg || msg.type !== "CAPTURE_VISIBLE") return realSend(msg);
+        log.grabs++;
+        const tb = document.getElementById("pnt-toolbar");
+        if (tb && getComputedStyle(tb).visibility !== "hidden") log.chromeShown++;
+        if (getComputedStyle(bar).visibility !== "hidden") log.barShown++;
+        const dpr = devicePixelRatio, c = document.createElement("canvas");
+        c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr);
+        const ctx = c.getContext("2d");
+        for (let y = 0; y < innerHeight; y++) {
+          const Y = Math.round(scrollY + y);
+          ctx.fillStyle = "rgb(" + (Y % 256) + "," + Math.floor(Y / 256) + ",0)";
+          ctx.fillRect(0, Math.round(y * dpr), c.width, Math.ceil(dpr));
+        }
+        return { dataUrl: c.toDataURL("image/png") };
+      };
+      ${SHOOT.replace("15000", "60000")}
+      chrome.runtime.sendMessage = realSend;
+      delete chrome.runtime.id;
+      ${PIXEL}
+      const pic = blob ? await createImageBitmap(blob) : null;
+      const rows = [];
+      if (pic) {
+        const c = document.createElement("canvas"); c.width = pic.width; c.height = pic.height;
+        const ctx = c.getContext("2d"); ctx.drawImage(pic, 0, 0);
+        const x = Math.round((24 + 150) * 2);
+        for (let y = 10; y < 2590; y += 37) {
+          const want = docTop + y;
+          if (want % 256 < 16 || want % 256 > 240) continue;
+          const d = ctx.getImageData(x, Math.round((24 + y) * 2) + 1, 1, 1).data;
+          rows.push([y, want, d[0] + 256 * d[1]]);
+        }
+      }
+      const out = {
+        ...shot, ...log, rows,
+        scrollBack: scrollY,
+        leftover: document.querySelectorAll("[data-pnt-capture-hide]").length,
+        chromeClass: document.documentElement.classList.contains("pnt-capturing"),
+      };
+      window.__t.esc();
+      tall.remove();
+      bar.remove();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return out;
+    `);
+    if (r.toast.startsWith("Failed")) return fail(r.toast);
+    if (r.grabs < 3) fail(`only ${r.grabs} captures for a 2600px element`);
+    if (r.chromeShown) fail(`Pointee's toolbar was visible in ${r.chromeShown} of ${r.grabs} captures`);
+    if (r.barShown) fail(`the fixed bar was in ${r.barShown} of ${r.grabs} captures`);
+    const off = r.rows.filter(([, want, got]) => Math.abs(want - got) > 2);
+    if (!r.rows.length) fail("no rows could be read back");
+    else if (off.length) fail(`${off.length} of ${r.rows.length} rows are off, first: element y ${off[0][0]} reads ${off[0][2]}, wanted ${off[0][1]}`);
+    if (r.scrollBack !== 0) fail(`the page was left scrolled to ${r.scrollBack}`);
+    if (r.leftover) fail(`${r.leftover} nodes still carry the capture marker`);
+    if (r.chromeClass) fail("the capturing class outlived the capture");
+  });
+
+  // The shadow used to be cast by filling the element's shape in black and
+  // drawing the pixels over it, so any column the capture did not cover — a
+  // sub-pixel edge, a strip under the scrollbar — showed as a black line down
+  // the element's side. A white page at fractional coordinates must come back
+  // white to its last column, on every backdrop.
+  for (const [dpr, clipped] of [[1, false], [2, false], [2, true]]) await check(`screenshot · real pixels: no dark seam down the edge (dpr ${dpr}${clipped ? ", clipped by an overflow:hidden parent" : ""})`, async (fail) => {
+    await send(ws, "Emulation.setDeviceMetricsOverride", { width: 0, height: 0, deviceScaleFactor: dpr, mobile: false });
+    const r = await evaluate(ws, `
+      const CLIPPED = ${clipped};
+      chrome.storage.local.set({ ...${SHOT_DEFAULTS}, shotStudio: "off" });
+      const box = document.createElement("div");
+      box.id = "seam-shot";
+      box.style.cssText = "height:240px;width:300.4px;margin:30px 0 0 40.3px;background:#fff";
+      // The case from the field: an element two pixels wider than an
+      // overflow:hidden parent, so its last columns are never on screen.
+      const host = document.createElement("div");
+      host.style.cssText = "width:300px;overflow:hidden;margin:30px 0 0 40.3px";
+      if (CLIPPED) { box.style.margin = "0"; box.style.width = "302px"; box.style.height = "240px"; host.appendChild(box); document.body.prepend(host); }
+      else document.body.prepend(box);
+      window.scrollTo(0, 0);
+      const rect = box.getBoundingClientRect();
+      box.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 5 }));
+      await new Promise((r) => setTimeout(r, 80));
+      const realSend = chrome.runtime.sendMessage;
+      chrome.runtime.id = "harness";
+      chrome.runtime.sendMessage = async (msg) => {
+        if (!msg || msg.type !== "CAPTURE_VISIBLE") return realSend(msg);
+        const c = document.createElement("canvas");
+        c.width = Math.round(innerWidth * devicePixelRatio); c.height = Math.round(innerHeight * devicePixelRatio);
+        const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        return { dataUrl: c.toDataURL("image/png") };
+      };
+      const out = {};
+      for (const bd of ["colour", "grid", "none"]) {
+        chrome.storage.local.set({ shotBackdrop: bd });
+        await new Promise((r) => setTimeout(r, 20));
+        ${SHOOT.replace(/const /g, "var ")}
+        const pic = blob ? await createImageBitmap(blob) : null;
+        if (!pic) { out[bd] = "no PNG: " + shot.toast; continue; }
+        const c = document.createElement("canvas"); c.width = pic.width; c.height = pic.height;
+        const ctx = c.getContext("2d"); ctx.drawImage(pic, 0, 0);
+        const right = Math.floor((24 + rect.width) * 2) - 1, left = 24 * 2, y = Math.round((24 + 120) * 2);
+        const px = (x) => Array.from(ctx.getImageData(x, y, 1, 1).data);
+        out[bd] = { left: px(left), right: px(right), inner: px(right - 1) };
+      }
+      chrome.runtime.sendMessage = realSend;
+      delete chrome.runtime.id;
+      window.__t.esc();
+      box.remove();
+      host.remove();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return out;
+    `);
+    await send(ws, "Emulation.clearDeviceMetricsOverride", {});
+    for (const [bd, v] of Object.entries(r)) {
+      if (typeof v === "string") { fail(`${bd}: ${v}`); continue; }
+      for (const side of ["left", "right", "inner"]) {
+        const [R, G, B, A] = v[side];
+        if (A === 255 && Math.min(R, G, B) < 200) fail(`${bd}: the element's ${side} column is dark (${v[side].join(",")})`);
+        if (side !== "right" && A < 255) fail(`${bd}: the element's ${side} column is not opaque (${v[side].join(",")})`);
+      }
+    }
+  });
+
   // ===== Reduced motion =====
   // DESIGN.md calls the inventory the weakest link in the contract because
   // nothing checked it. This does: with the preference emulated, every rule

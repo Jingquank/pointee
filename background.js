@@ -7,7 +7,7 @@ const DEFAULT_BADGE = "#f0452b"; // the dark theme's accent
 // already open when the extension was installed or reloaded — chrome.scripting
 // is the only way to reach those. Keep both in step with manifest.json's
 // content_scripts entry, tokens.css first so it wins the cascade order.
-const INJECT_JS = ["lib/html2canvas-pro.min.js", "content.js"];
+const INJECT_JS = ["lib/html2canvas-pro.min.js", "rail.js", "shot.js", "content.js"];
 const INJECT_CSS = ["tokens.css", "content.css"];
 
 // The badge is browser chrome, not page chrome, so it can't read tokens.css.
@@ -92,6 +92,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // chrome.runtime.openOptionsPage() is not exposed to content scripts.
   if (msg.type === "OPEN_SETTINGS") {
     chrome.runtime.openOptionsPage();
+  }
+
+  // A screenshot is real pixels: the content script hides its chrome and
+  // whatever sits on top of the selection, then asks for the visible tab as it
+  // is composited — video frames, WebGL, iframes and all. Only the worker can
+  // call captureVisibleTab. The quota (two calls a second) is the content
+  // script's to respect; a refusal comes back as an error it can retry or
+  // fall back from.
+  if (msg.type === "CAPTURE_VISIBLE" && sender.tab) {
+    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }).then(
+      (dataUrl) => sendResponse({ dataUrl }),
+      (err) => sendResponse({ error: String((err && err.message) || err) })
+    );
+    return true; // keeps the message channel open for the async reply
   }
 
   // The shader agent has to run in the page's own JavaScript world — the

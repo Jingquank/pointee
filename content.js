@@ -109,6 +109,7 @@
     "pnt-color-picker",
     "pnt-text-editor",
     "pnt-probe-cell",
+    "pnt-shot-studio",
   ];
   const OUR_CHROME = OUR_ROOTS.map((id) => `#${id}`).join(",");
   const OUR_PREFIX = "pnt-";
@@ -384,6 +385,33 @@
     if (area !== "local") return;
     for (const key of Object.keys(COPY_PREFS)) {
       if (changes[key]) setCopyPref(key, changes[key].newValue);
+    }
+  });
+
+  // ===== Screenshot Preferences =====
+  // The roster lives in shot.js, which the settings page loads too, so the
+  // two cannot drift. Read when the camera is pressed; the studio starts from
+  // them and Set as default writes them back.
+  const SHOT_PREFS = window.pntShot ? window.pntShot.PREFS : {};
+  const shotPrefs = {};
+  for (const key of Object.keys(SHOT_PREFS)) shotPrefs[key] = SHOT_PREFS[key][0];
+
+  function setShotPref(key, value) {
+    const roster = SHOT_PREFS[key];
+    if (roster) shotPrefs[key] = roster.includes(value) ? value : roster[0];
+  }
+
+  chrome.storage?.local.get(Object.keys(SHOT_PREFS), (stored) => {
+    if (!stored) return;
+    for (const key of Object.keys(SHOT_PREFS)) {
+      if (key in stored) setShotPref(key, stored[key]);
+    }
+  });
+
+  chrome.storage?.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    for (const key of Object.keys(SHOT_PREFS)) {
+      if (changes[key]) setShotPref(key, changes[key].newValue);
     }
   });
 
@@ -8579,6 +8607,7 @@
     // redline, which needs to know what the cursor is over. Modifier state is
     // re-read from every event on purpose: a keyup we never saw (released
     // during Alt+Tab, or over an iframe) can neither strand nor miss the mode.
+    if (studioEl) return;
     if (selectedElement) {
       if (redlining && !e.altKey) stopRedline();
       else if (!redlining && e.altKey) startRedline();
@@ -8645,6 +8674,7 @@
     if (editPopoverEl && editPopoverEl.contains(e.target)) return;
     if (rungListEl && rungListEl.contains(e.target)) return;
     if (textEditorEl && textEditorEl.contains(e.target)) return;
+    if (studioEl && studioEl.contains(e.target)) return;
 
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -8680,6 +8710,17 @@
   }
 
   function onKeyDown(e) {
+    // The screenshot studio is modal: Escape closes it and nothing else here
+    // applies — no measuring, no undo, no stepping out of the selection.
+    if (studioEl) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        closeShotStudio();
+      }
+      return;
+    }
+
     // Option/Alt arms redline — only in select mode, and only bare Alt so
     // browser Alt-combos keep working. No e.repeat re-entry: startRedline()
     // is a no-op while active, but skipping the call keeps intent obvious.
@@ -8762,6 +8803,7 @@
   }
 
   function deselectElement() {
+    closeShotStudio(); // the studio frames this selection's shot
     exitEditMode(); // and every deselection path ends editing — same reason
     stopRedline(); // every deselection path ends redline — it has no anchor
     const was = selectedElement;
@@ -9642,12 +9684,40 @@
   }
 
   // ===== Screenshot Capture =====
+  // A screenshot is real pixels: chrome.tabs.captureVisibleTab, asked for by
+  // the service worker, cropped to the element. html2canvas used to be the only
+  // path, and it repaints the DOM with its own renderer rather than taking a
+  // picture — so video frames, WebGL canvases without preserveDrawingBuffer,
+  // iframes, cross-origin images, backdrop-filter and shadow roots came out
+  // blank. The browser already has the composited picture on screen; this asks
+  // for it. html2canvas stays as the fallback for when there is no picture to
+  // ask for (a page the tab capture refuses, or no service worker at all).
+  //
+  // One press runs a pipeline, chosen in the screenshot round:
+  //   1. hide what is on top — whatever paints over the selection without
+  //      being part of it (a sticky header, a chat bubble, a cookie bar),
+  //      and Pointee's own chrome;
+  //   2. capture the visible part of the element, in real pixels;
+  //   3. if the element is bigger than the window, scroll and capture again,
+  //      and stitch the tiles into one image.
+  // Then the page goes back exactly as it was: scroll position, and every
+  // node that was hidden.
+
+  // chrome.tabs.captureVisibleTab allows two calls a second per extension.
+  const CAPTURE_GAP = 520;
+  // Past this a stitch would take over a minute; the renderer gets it instead.
+  const MAX_CAPTURE_TILES = 160;
+  // The marker for a node hidden for the capture frame. An attribute and a
+  // rule in content.css rather than an inline style, so the page's own style
+  // attribute is never written; removed in the same finally that set it.
+  const CAPTURE_HIDE_ATTR = "data-pnt-capture-hide";
+  let lastTabGrabAt = 0;
+
   // Chromium refuses a canvas over 65535 device pixels a side or 16384² in
   // area: drawing becomes a no-op and toBlob hands back null, which read as
-  // "toBlob failed" on any long page at a Retina scale — 32k CSS pixels is
-  // enough. The scale is clamped to what still exports, a step inside each
-  // limit so the library's own rounding cannot tip over it. A downsampled
-  // capture beats none.
+  // "toBlob failed" on any long page at a Retina scale. The fallback renderer's
+  // scale is clamped to what still exports, a step inside each limit so the
+  // library's own rounding cannot tip over it. A downsampled capture beats none.
   const CANVAS_MAX_SIDE = 65535 * 0.99;
   const CANVAS_MAX_AREA = 16384 * 16384 * 0.99;
 
@@ -9668,20 +9738,317 @@
     );
   }
 
-  async function captureElementScreenshot(el) {
+  const waitFrames = () => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 16))));
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Only a real extension has a worker to ask. The test harness stubs
+  // chrome.runtime without an id, and lands on the renderer straight away.
+  function canGrabTab() {
+    return typeof chrome !== "undefined" && Boolean(chrome.runtime && chrome.runtime.id && chrome.runtime.sendMessage);
+  }
+
+  // The data URL is decoded here rather than loaded through an <img> or
+  // fetch(): both of those go through the page's CSP, which may well refuse
+  // data: URLs. atob does not ask anyone.
+  function dataUrlToBlob(url) {
+    const comma = url.indexOf(",");
+    const bin = atob(url.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: "image/png" });
+  }
+
+  async function grabTab() {
+    const gap = lastTabGrabAt + CAPTURE_GAP - Date.now();
+    if (gap > 0) await wait(gap);
+    for (let attempt = 0; ; attempt++) {
+      lastTabGrabAt = Date.now();
+      let res;
+      try {
+        res = await chrome.runtime.sendMessage({ type: "CAPTURE_VISIBLE" });
+      } catch (err) {
+        res = { error: String((err && err.message) || err) };
+      }
+      if (res && res.dataUrl) return createImageBitmap(dataUrlToBlob(res.dataUrl));
+      const msg = (res && res.error) || "The tab could not be captured";
+      // The quota is per second; one more wait almost always clears it.
+      if (/MAX_CAPTURE/i.test(msg) && attempt < 3) {
+        await wait(CAPTURE_GAP);
+        continue;
+      }
+      throw new Error(msg);
+    }
+  }
+
+  // The box the element can be seen through: the viewport, narrowed by every
+  // ancestor that clips its overflow. Measured without the scrollbars.
+  function captureClip(el) {
+    const doc = document.documentElement;
+    const clip = { left: 0, top: 0, right: doc.clientWidth, bottom: doc.clientHeight };
+    for (let a = el.parentElement; a && a !== doc && a !== document.body; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+      const r = a.getBoundingClientRect();
+      clip.left = Math.max(clip.left, r.left + a.clientLeft);
+      clip.top = Math.max(clip.top, r.top + a.clientTop);
+      clip.right = Math.min(clip.right, r.left + a.clientLeft + a.clientWidth);
+      clip.bottom = Math.min(clip.bottom, r.top + a.clientTop + a.clientHeight);
+    }
+    return clip;
+  }
+
+  function intersectRect(r, clip) {
+    const left = Math.max(r.left, clip.left), top = Math.max(r.top, clip.top);
+    const right = Math.min(r.right, clip.right), bottom = Math.min(r.bottom, clip.bottom);
+    return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+  }
+
+  // Whatever scrolls the element: the nearest ancestor that actually scrolls,
+  // or the document.
+  function captureScroller(el) {
+    const doc = document.documentElement;
+    for (let a = el.parentElement; a && a !== doc && a !== document.body; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      const y = /(auto|scroll|overlay)/.test(cs.overflowY) && a.scrollHeight > a.clientHeight + 1;
+      const x = /(auto|scroll|overlay)/.test(cs.overflowX) && a.scrollWidth > a.clientWidth + 1;
+      if (x || y) return a;
+    }
+    return document.scrollingElement || doc;
+  }
+
+  function isPinned(node) {
+    for (let n = node; n && n !== document.documentElement; n = n.parentElement) {
+      const p = getComputedStyle(n).position;
+      if (p === "fixed" || p === "sticky") return true;
+    }
+    return false;
+  }
+
+  // What paints over the element without being part of it. Sampled on a grid
+  // over the visible part: at each point, everything stacked above the element
+  // (or above the ancestor the point lands on) is on top of it. `pinnedOnly`
+  // narrows it to fixed and sticky things — the ones that would otherwise show
+  // up again in every tile of a stitch.
+  function findOccluders(el, pinnedOnly) {
+    const v = intersectRect(el.getBoundingClientRect(), captureClip(el));
+    const found = new Set();
+    if (!v.width || !v.height) return found;
+    const N = 9;
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const x = v.left + ((i + 0.5) * v.width) / N;
+        const y = v.top + ((j + 0.5) * v.height) / N;
+        for (const n of document.elementsFromPoint(x, y)) {
+          if (n === el || el.contains(n) || n.contains(el)) break;
+          if (isOurs.node(n)) continue;
+          if (pinnedOnly && !isPinned(n)) continue;
+          found.add(n);
+        }
+      }
+    }
+    return found;
+  }
+
+  async function captureByPixels(el, { isolate, onProgress }) {
+    const html = document.documentElement;
+    const scroller = captureScroller(el);
+    const start = { left: scroller.scrollLeft, top: scroller.scrollTop };
+    const hidden = [];
+    const hide = (nodes) => {
+      for (const n of nodes) {
+        if (n.hasAttribute(CAPTURE_HIDE_ATTR)) continue;
+        n.setAttribute("data-pnt-capture-hide", "");
+        hidden.push(n);
+      }
+    };
+    html.classList.add("pnt-capturing");
+    try {
+      await waitFrames();
+      const first = el.getBoundingClientRect();
+      const W = first.width, H = first.height;
+      if (W < 1 || H < 1) throw new Error("The element has no size to capture");
+      const view = captureClip(el);
+      const vw = view.right - view.left, vh = view.bottom - view.top;
+      if (vw < 1 || vh < 1) throw new Error("The element is clipped out of view");
+      const nx = Math.max(1, Math.ceil(W / vw - 0.001));
+      const ny = Math.max(1, Math.ceil(H / vh - 0.001));
+      const total = nx * ny;
+      if (total > MAX_CAPTURE_TILES) throw new Error("too many tiles");
+
+      let out = null, ctx = null, srcScale = 1, ratio = 1;
+      // What the tiles actually covered, in the output's device pixels.
+      const covered = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      let n = 0;
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          n++;
+          // Bring this tile's corner of the element to the clip's corner. On
+          // an axis that needs no stitching, scroll only if the element is not
+          // already fully in view along it.
+          const r = el.getBoundingClientRect(), c = captureClip(el);
+          const along = (count, i, lo, hi, size, clo, chi, span) => {
+            if (count > 1) return lo + i * span - clo;
+            return lo >= clo && hi <= chi ? 0 : lo - clo;
+          };
+          const dx = along(nx, ix, r.left, r.right, W, c.left, c.right, vw);
+          const dy = along(ny, iy, r.top, r.bottom, H, c.top, c.bottom, vh);
+          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+            scroller.scrollBy({ left: dx, top: dy, behavior: "instant" });
+            await waitFrames();
+            // Lazy images and scroll-linked effects get a beat to settle.
+            if (total > 1) await wait(80);
+          }
+          // Pinned things come back into every tile after the first, so they
+          // go whether or not the setting hides what is on top.
+          if (isolate) hide(findOccluders(el, false));
+          else if (n > 1) hide(findOccluders(el, true));
+          if (onProgress && total > 1) onProgress(n, total);
+          html.classList.add("pnt-grabbing");
+          await waitFrames();
+          let img;
+          try {
+            img = await grabTab();
+          } finally {
+            html.classList.remove("pnt-grabbing");
+          }
+          if (!out) {
+            ratio = img.width / window.innerWidth;
+            srcScale = window.pntShot.fitScale(W, H, ratio);
+            out = document.createElement("canvas");
+            out.width = Math.max(1, Math.round(W * srcScale));
+            out.height = Math.max(1, Math.round(H * srcScale));
+            ctx = out.getContext("2d");
+          }
+          const now = el.getBoundingClientRect();
+          const v = intersectRect(now, captureClip(el));
+          if (v.width && v.height) {
+            // Both rectangles on whole device pixels. A crop at a fractional
+            // position comes out with a half-transparent last column.
+            const sx0 = Math.round(v.left * ratio), sy0 = Math.round(v.top * ratio);
+            const sx1 = Math.round((v.left + v.width) * ratio), sy1 = Math.round((v.top + v.height) * ratio);
+            const dx0 = Math.round((v.left - now.left) * srcScale), dy0 = Math.round((v.top - now.top) * srcScale);
+            const dx1 = Math.min(out.width, Math.round((v.left + v.width - now.left) * srcScale));
+            const dy1 = Math.min(out.height, Math.round((v.top + v.height - now.top) * srcScale));
+            if (sx1 > sx0 && sy1 > sy0 && dx1 > dx0 && dy1 > dy0) {
+              ctx.drawImage(img, sx0, sy0, sx1 - sx0, sy1 - sy0, dx0, dy0, dx1 - dx0, dy1 - dy0);
+              covered.x0 = Math.min(covered.x0, dx0);
+              covered.y0 = Math.min(covered.y0, dy0);
+              covered.x1 = Math.max(covered.x1, dx1);
+              covered.y1 = Math.max(covered.y1, dy1);
+            }
+          }
+          img.close();
+        }
+      }
+      fillThinEdges(out, covered, srcScale);
+      return { canvas: out, srcScale, tiles: total };
+    } finally {
+      for (const node of hidden) node.removeAttribute("data-pnt-capture-hide");
+      html.classList.remove("pnt-capturing", "pnt-grabbing");
+      scroller.scrollTo({ left: start.left, top: start.top, behavior: "instant" });
+    }
+  }
+
+  // A strip along an edge that was never on screen — the last two columns of
+  // an element its overflow:hidden parent cuts, the row under a rounding — is
+  // filled from the pixels beside it. Only thin strips: past a few CSS pixels
+  // a stretched column would be invention, so a wider gap is left for the
+  // presentation to back with the page colour.
+  const THIN_EDGE = 4;
+
+  function fillThinEdges(out, c, scale) {
+    if (!(c.x1 > c.x0 && c.y1 > c.y0)) return;
+    const ctx = out.getContext("2d");
+    // Nearest-neighbour: a smoothed stretch of a one-pixel column samples the
+    // transparent column beside it and fades the strip back out.
+    ctx.imageSmoothingEnabled = false;
+    const W = out.width, H = out.height, most = THIN_EDGE * scale;
+    if (W - c.x1 > 0 && W - c.x1 <= most) ctx.drawImage(out, c.x1 - 1, 0, 1, H, c.x1, 0, W - c.x1, H);
+    if (c.x0 > 0 && c.x0 <= most) ctx.drawImage(out, c.x0, 0, 1, H, 0, 0, c.x0, H);
+    if (H - c.y1 > 0 && H - c.y1 <= most) ctx.drawImage(out, 0, c.y1 - 1, W, 1, 0, c.y1, W, H - c.y1);
+    if (c.y0 > 0 && c.y0 <= most) ctx.drawImage(out, 0, c.y0, W, 1, 0, 0, W, c.y0);
+  }
+
+  async function captureByRender(el) {
+    const scale = screenshotScale(el);
     const canvas = await html2canvas(el, {
       backgroundColor: resolveBackgroundColor(el),
       logging: false,
       useCORS: true,
-      scale: screenshotScale(el),
+      scale,
     });
+    return { canvas, srcScale: canvas.width / Math.max(1, el.getBoundingClientRect().width), tiles: 1 };
+  }
 
+  // The element's own corners, in CSS pixels, top-left clockwise. A
+  // percentage is of the box; an elliptical corner keeps its horizontal radius.
+  function shotRadii(el, rect) {
+    const cs = getComputedStyle(el);
+    return ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"].map((p) => {
+      const v = String(cs[p] || "0").trim().split(/\s+/)[0];
+      const n = parseFloat(v) || 0;
+      return v.endsWith("%") ? (n / 100) * rect.width : n;
+    });
+  }
+
+  // The element, captured: its pixels and everything the presentation needs to
+  // know about it. The shot is taken once; framing it differently never takes
+  // it again.
+  async function captureElement(el, onProgress) {
+    const rect = el.getBoundingClientRect();
+    const meta = {
+      w: rect.width,
+      h: rect.height,
+      radii: shotRadii(el, rect),
+      label: buildSelector(el),
+      host: location.host,
+      pageBg: resolveBackgroundColor(document.body || el),
+    };
+    let raw = null;
+    if (canGrabTab()) {
+      try {
+        raw = await captureByPixels(el, { isolate: shotPrefs.shotIsolate === "on", onProgress });
+        meta.method = "pixels";
+        // Real pixels are opaque wherever they were seen; anything left
+        // transparent was never on screen, and the page was behind it.
+        meta.fill = resolveBackgroundColor(el);
+      } catch {
+        raw = null; // a page the tab capture refuses still gets a picture
+      }
+    }
+    if (!raw) {
+      raw = await captureByRender(el);
+      meta.method = "render";
+    }
+    meta.srcScale = raw.srcScale;
+    meta.tiles = raw.tiles;
+    meta.sample = window.pntShot.sample(raw.canvas);
+    return { src: raw.canvas, meta };
+  }
+
+  function canvasToBlob(canvas) {
     return new Promise((resolve, reject) => {
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
     });
   }
 
-  async function writeImageToClipboard(blob) {
+  function shotFileName(meta, scale) {
+    const base = String(meta.label || "element").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "element";
+    const s = Math.round(scale * 100) / 100;
+    return base + (s > 1 ? "@" + s + "x" : "") + ".png";
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name || "element-screenshot.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function writeImageToClipboard(blob, name) {
     try {
       const item = new ClipboardItem({
         "image/png": Promise.resolve(blob),
@@ -9691,12 +10058,7 @@
     } catch {
       // Clipboard writes need a focused document and can be denied outright;
       // fall back to handing the user the file instead of losing the capture.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "element-screenshot.png";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, name);
       return false;
     }
   }
@@ -9787,25 +10149,557 @@
   }
 
   async function copyScreenshot(el, btnEl) {
+    if (!el || shotBusy) return;
+    shotBusy = true;
     flashButton(btnEl);
     const cancelLoading = setButtonLoading(btnEl);
+    let stitched = false;
     try {
-      const blob = await captureElementScreenshot(el);
-      const ok = await writeImageToClipboard(blob);
+      const shot = await captureElement(el, (n, total) => {
+        stitched = true;
+        showToast(`Capturing ${n} of ${total}`, false, { plain: true });
+      });
+      // The clipboard gets the default look straight away — the studio is for
+      // changing it, not a step between the button and the picture.
+      const out = window.pntShot.compose(shot.src, shot.meta, shotPrefs);
+      const name = shotFileName(shot.meta, out.scale);
+      const ok = await writeImageToClipboard(await canvasToBlob(out.canvas), name);
       cancelLoading();
       setButtonSuccess(btnEl, ok ? "Copied!" : "Downloaded!");
+      if (stitched) removeToast();
+      if (shotPrefs.shotStudio === "on" && probeActive && selectedElement === el) {
+        openShotStudio(shot, { copied: ok, name });
+      }
     } catch (err) {
       cancelLoading();
       resetButton(btnEl);
       showToast("Failed to capture: " + err.message, true);
+    } finally {
+      shotBusy = false;
     }
+  }
+
+  // ===== Screenshot Studio =====
+  // The modal a shot opens in, chosen in the screenshot round (idea 15, the
+  // workbench): a large preview on the left that zooms and pans, and the
+  // presentation on the right in three groups — Style, Frame, Export. The
+  // shot is already on the clipboard when it opens; changing anything redraws
+  // the preview and arms Copy. Set as default writes the look to the same
+  // keys the Settings page's Screenshot section owns.
+  //
+  // The capture is never retaken here. Everything the studio changes is the
+  // frame around the pixels, so re-rendering is a canvas draw, not a capture.
+
+  // The options each control offers, in display order (the rosters in shot.js
+  // are default-first, which is not the order a row reads in).
+  const STUDIO_ROWS = {
+    shotPadding: [["s", "S"], ["m", "M"], ["l", "L"]],
+    shotCorners: [["match", "Match"], ["0", "0"], ["8", "8"], ["12", "12"], ["20", "20"]],
+    shotFrameCorners: [["0", "0"], ["12", "12"], ["20", "20"], ["28", "28"]],
+    shotShadow: [["none", "None"], ["subtle", "Subtle"], ["soft", "Soft"], ["deep", "Deep"], ["float", "Float"]],
+    shotScale: [["1", "1x"], ["2", "2x"], ["3", "3x"]],
+  };
+  const STUDIO_BACKDROPS = [["colour", "Colour"], ["grid", "Grid"], ["plate", "Spec"], ["window", "Window"], ["none", "None"]];
+  const STUDIO_LOOK_KEYS = ["shotBackdrop", "shotTone", "shotPadding", "shotCorners", "shotFrameCorners", "shotShadow", "shotScale"];
+  // The preview is drawn at the export scale when it can be, but never past
+  // this many pixels — a 26,000px page at 3x would be a gigabyte of canvas to
+  // repaint on every click.
+  const STUDIO_PREVIEW_MAX_PX = 32e6;
+  const STUDIO_ZOOM_STEPS = [0.02, 0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.5, 2, 3, 4, 6, 8];
+  const STUDIO_ZOOM_MIN = 0.02;
+  const STUDIO_ZOOM_MAX = 8;
+  // Breathing room around the shot when it is fitted, and the most a pan can
+  // leave between the shot's edge and the preview's.
+  const STUDIO_VIEW_MARGIN = 40;
+
+  let shotBusy = false;
+  let studioEl = null;
+  let studio = null;
+
+  function studioIcon(body) {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  }
+  // Feather, the family ICONS comes from.
+  const STUDIO_ICONS = {
+    sun: studioIcon('<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'),
+    moon: studioIcon('<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'),
+    minus: studioIcon('<line x1="5" y1="12" x2="19" y2="12"/>'),
+    plus: studioIcon('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
+    fit: studioIcon('<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>'),
+  };
+
+  function openShotStudio(shot, init = {}) {
+    closeShotStudio();
+    const prefs = {};
+    for (const key of STUDIO_LOOK_KEYS) prefs[key] = shotPrefs[key];
+    const P = window.pntShot;
+
+    studioEl = document.createElement("div");
+    studioEl.id = "pnt-shot-studio";
+    studioEl.innerHTML = `
+      <div class="pnt-ss-dim"></div>
+      <div class="pnt-ss-panel" role="dialog" aria-modal="true" aria-labelledby="pnt-ss-title">
+        <header class="pnt-ss-head">
+          <b id="pnt-ss-title">Screenshot</b>
+          <span class="pnt-ss-name"></span>
+          <button type="button" class="pnt-ss-x" data-ss="close" aria-label="Close">${ICONS.close}</button>
+        </header>
+        <div class="pnt-ss-body">
+          <div class="pnt-ss-view" tabindex="0" aria-label="Preview. Drag to pan; plus and minus zoom; 0 fits, 1 is 100%.">
+            <div class="pnt-ss-cam"></div>
+            <span class="pnt-ss-dims"></span>
+            <div class="pnt-ss-zoom" role="toolbar" aria-label="Zoom">
+              <button type="button" data-z="out" aria-label="Zoom out">${STUDIO_ICONS.minus}</button>
+              <button type="button" data-z="toggle" class="pnt-ss-pct" aria-label="Fit or 100%"></button>
+              <button type="button" data-z="in" aria-label="Zoom in">${STUDIO_ICONS.plus}</button>
+              <span class="pnt-ss-sep"></span>
+              <button type="button" data-z="fit" aria-label="Fit to window">${STUDIO_ICONS.fit}</button>
+            </div>
+            <div class="pnt-ss-mini" hidden aria-hidden="true"><div class="pnt-ss-ink"><span class="pnt-ss-vw"></span></div></div>
+          </div>
+          <div class="pnt-ss-side"></div>
+        </div>
+        <footer class="pnt-ss-foot">
+          <span class="pnt-ss-status" role="status" aria-live="polite"></span>
+          <span class="pnt-ss-file"></span>
+          <button type="button" class="pnt-ss-link" data-ss="default">Set as default</button>
+          <button type="button" class="pnt-ss-btn" data-ss="download">Download</button>
+          <button type="button" class="pnt-ss-btn pnt-ss-primary" data-ss="copy">Copy</button>
+        </footer>
+      </div>`;
+    document.documentElement.appendChild(studioEl);
+
+    const $ = (sel) => studioEl.querySelector(sel);
+    const view = $(".pnt-ss-view"), cam = $(".pnt-ss-cam"), side = $(".pnt-ss-side");
+    const statusEl = $(".pnt-ss-status"), copyBtn = $('[data-ss="copy"]');
+    const preview = document.createElement("canvas");
+    cam.appendChild(preview);
+    $(".pnt-ss-name").textContent = shot.meta.label;
+
+    studio = {
+      shot, prefs, preview, view, cam,
+      z: 1, x: 0, y: 0, mode: "fit", W: 1, H: 1, exportScale: 1, dirty: false, drag: null,
+    };
+    const S = studio;
+
+    function status(text, kind) {
+      statusEl.className = "pnt-ss-status" + (kind ? " pnt-ss-" + kind : "");
+      statusEl.replaceChildren();
+      if (kind === "ok" || kind === "warn") {
+        const mark = document.createElement("span");
+        mark.className = "pnt-ss-mark";
+        mark.innerHTML = kind === "ok" ? ICONS.check : ICONS.alert;
+        statusEl.appendChild(mark);
+      }
+      statusEl.append(text);
+    }
+
+    // ----- Side panel -----
+    const fields = {};
+    const field = (key, label, control) => {
+      const f = document.createElement("div");
+      f.className = "pnt-ss-field";
+      f.innerHTML = `<div class="pnt-ss-fh"><span class="pnt-ss-lbl"></span><span class="pnt-ss-val"></span></div>`;
+      f.querySelector(".pnt-ss-lbl").textContent = label;
+      f.appendChild(control);
+      fields[key] = f;
+      return f;
+    };
+    const group = (name, extra) => {
+      const g = document.createElement("section");
+      g.className = "pnt-ss-group";
+      const cat = document.createElement("p");
+      cat.className = "pnt-ss-cat";
+      cat.textContent = name;
+      if (extra) cat.appendChild(extra);
+      g.appendChild(cat);
+      side.appendChild(g);
+      return g;
+    };
+    const seg = (key, label) => {
+      const s = document.createElement("span");
+      s.className = "pnt-ss-seg";
+      s.setAttribute("role", "radiogroup");
+      s.setAttribute("aria-label", label);
+      for (const [value, text] of STUDIO_ROWS[key]) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("role", "radio");
+        b.dataset.key = key;
+        b.dataset.val = value;
+        b.textContent = text;
+        s.appendChild(b);
+      }
+      return s;
+    };
+
+    const tone = document.createElement("button");
+    tone.type = "button";
+    tone.className = "pnt-ss-tone";
+    tone.dataset.ss = "tone";
+    tone.innerHTML = STUDIO_ICONS.sun + STUDIO_ICONS.moon;
+    const style = group("Style", tone);
+    const tiles = document.createElement("div");
+    tiles.className = "pnt-ss-tiles";
+    tiles.setAttribute("role", "radiogroup");
+    tiles.setAttribute("aria-label", "Backdrop");
+    for (const [value, text] of STUDIO_BACKDROPS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pnt-ss-tile";
+      b.setAttribute("role", "radio");
+      b.dataset.key = "shotBackdrop";
+      b.dataset.val = value;
+      b.innerHTML = `<canvas class="pnt-ss-pic"></canvas><span></span>`;
+      b.querySelector("span").textContent = text;
+      tiles.appendChild(b);
+    }
+    style.appendChild(field("shotBackdrop", "Backdrop", tiles));
+    const sampleNote = document.createElement("p");
+    sampleNote.className = "pnt-ss-note";
+    sampleNote.textContent = "This element has no colour of its own to sample, so the backdrop is a neutral grey.";
+    style.appendChild(sampleNote);
+
+    const frame = group("Frame");
+    frame.appendChild(field("shotPadding", "Padding", seg("shotPadding", "Padding")));
+    frame.appendChild(field("shotCorners", "Element corners", seg("shotCorners", "Element corners")));
+    frame.appendChild(field("shotFrameCorners", "Backdrop corners", seg("shotFrameCorners", "Backdrop corners")));
+    frame.appendChild(field("shotShadow", "Shadow", seg("shotShadow", "Shadow")));
+
+    const exp = group("Export");
+    exp.appendChild(field("shotScale", "Size", seg("shotScale", "Size")));
+    const sizeNote = document.createElement("p");
+    sizeNote.className = "pnt-ss-note";
+    exp.appendChild(sizeNote);
+
+    // The tiles are the real renderer at thumbnail size, on a stand-in cut
+    // from the top of the element — so each one is the backdrop as it would
+    // really draw, around the element as it really looks.
+    const thumbSrc = document.createElement("canvas");
+    {
+      const tw = 60, th = 48;
+      thumbSrc.width = tw * 2;
+      thumbSrc.height = th * 2;
+      const c = thumbSrc.getContext("2d");
+      const src = shot.src, sw = src.width, sh = src.height;
+      const k = Math.max(thumbSrc.width / sw, thumbSrc.height / sh);
+      c.drawImage(src, 0, 0, Math.min(sw, thumbSrc.width / k), Math.min(sh, thumbSrc.height / k), 0, 0, thumbSrc.width, thumbSrc.height);
+    }
+    const thumbMeta = {
+      w: 60, h: 48,
+      radii: shot.meta.radii.map((r) => Math.min(8, r * 0.4)),
+      sample: shot.meta.sample, host: "", label: "", pageBg: shot.meta.pageBg,
+    };
+    function paintTiles() {
+      for (const b of tiles.querySelectorAll(".pnt-ss-tile")) {
+        const look = { ...prefs, shotBackdrop: b.dataset.val, shotPadding: "s", shotShadow: prefs.shotShadow === "none" ? "none" : "subtle", shotFrameCorners: "0" };
+        P.compose(thumbSrc, thumbMeta, look, { scale: 1, checker: true, canvas: b.querySelector("canvas") });
+      }
+    }
+
+    function paintControls() {
+      for (const b of side.querySelectorAll("[data-key]")) {
+        const on = prefs[b.dataset.key] === b.dataset.val;
+        b.setAttribute("aria-checked", String(on));
+        b.tabIndex = on ? 0 : -1;
+      }
+      const dark = prefs.shotTone === "dark";
+      tone.setAttribute("aria-pressed", String(dark));
+      tone.setAttribute("aria-label", dark ? "Dark background. Switch to light" : "Light background. Switch to dark");
+      tone.title = dark ? "Dark background" : "Light background";
+      const name = STUDIO_BACKDROPS.find((b) => b[0] === prefs.shotBackdrop)[1];
+      val("shotBackdrop", prefs.shotBackdrop === "none" ? "None" : `${name} · ${prefs.shotTone}`);
+      val("shotPadding", `${P.PAD[prefs.shotPadding]} px`);
+      val("shotCorners", prefs.shotCorners === "match"
+        ? `element's own · ${radiusText(shot.meta.radii)}`
+        : `${prefs.shotCorners} px`);
+      val("shotFrameCorners", `${prefs.shotFrameCorners} px`);
+      val("shotShadow", STUDIO_ROWS.shotShadow.find((r) => r[0] === prefs.shotShadow)[1].toLowerCase());
+      fields.shotFrameCorners.hidden = prefs.shotBackdrop === "none";
+      sampleNote.hidden = !(prefs.shotBackdrop === "colour" && !shot.meta.sample);
+
+      // Sizes Chrome cannot export are disabled, and the chosen one steps
+      // down when it stops fitting — a 26,000px page has no 3x.
+      for (const b of fields.shotScale.querySelectorAll("button")) {
+        const fits = P.scaleFits(shot.meta, prefs, Number(b.dataset.val));
+        b.disabled = !fits;
+        b.title = fits ? "" : "Too large for Chrome to export at this size";
+      }
+      if (!P.scaleFits(shot.meta, prefs, Number(prefs.shotScale))) {
+        prefs.shotScale = ["3", "2", "1"].find((s) => P.scaleFits(shot.meta, prefs, Number(s))) || "1";
+        for (const b of fields.shotScale.querySelectorAll("[data-key]")) b.setAttribute("aria-checked", String(b.dataset.val === prefs.shotScale));
+      }
+      const L = P.layout(shot.meta, prefs);
+      S.exportScale = P.fitScale(L.W, L.H, Number(prefs.shotScale));
+      const pw = Math.round(L.W * S.exportScale), ph = Math.round(L.H * S.exportScale);
+      val("shotScale", `${pw.toLocaleString()} × ${ph.toLocaleString()}`);
+      const mb = (pw * ph * 0.3) / 1048576;
+      const capped = !P.scaleFits(shot.meta, prefs, 3);
+      sizeNote.classList.toggle("pnt-ss-warn", capped);
+      sizeNote.textContent =
+        (capped ? "3x is over Chrome's 65,535 px canvas limit. " : "") +
+        `About ${mb < 1 ? Math.max(1, Math.round(mb * 1024)) + " KB" : mb.toFixed(1) + " MB"} PNG` +
+        (shot.meta.tiles > 1 ? `, stitched from ${shot.meta.tiles} captures.` : ".") +
+        (shot.meta.method === "render" ? " Redrawn from the page, not captured from the screen." : "");
+      $(".pnt-ss-file").textContent = shotFileName(shot.meta, S.exportScale);
+      $(".pnt-ss-dims").textContent = `${Math.round(shot.meta.w).toLocaleString()} × ${Math.round(shot.meta.h).toLocaleString()} px element`;
+    }
+    function val(key, text) {
+      const v = fields[key] && fields[key].querySelector(".pnt-ss-val");
+      if (v) v.textContent = text;
+    }
+
+    // ----- Preview -----
+    function render() {
+      const L = P.layout(shot.meta, prefs);
+      const want = Math.min(S.exportScale, Math.sqrt(STUDIO_PREVIEW_MAX_PX / (L.W * L.H)));
+      const out = P.compose(shot.src, shot.meta, prefs, { scale: Math.max(0.05, want), canvas: preview, checker: true });
+      S.W = L.W;
+      S.H = L.H;
+      // The canvas is drawn at whatever resolution it could afford; its CSS
+      // size is the shot's size in CSS pixels, so 100% means 100%.
+      preview.style.width = L.W + "px";
+      preview.style.height = L.H + "px";
+      preview.dataset.scale = String(out.scale);
+      if (S.mode === "fit") fitView(); else applyView();
+    }
+
+    function fitZoom() {
+      const m = STUDIO_VIEW_MARGIN;
+      return Math.max(STUDIO_ZOOM_MIN, Math.min(STUDIO_ZOOM_MAX, (view.clientWidth - m * 2) / S.W, (view.clientHeight - m * 2) / S.H, 1));
+    }
+    function clampView() {
+      const vw = view.clientWidth, vh = view.clientHeight, cw = S.W * S.z, ch = S.H * S.z, m = STUDIO_VIEW_MARGIN;
+      S.x = cw + m * 2 <= vw ? (vw - cw) / 2 : Math.min(m, Math.max(vw - cw - m, S.x));
+      S.y = ch + m * 2 <= vh ? (vh - ch) / 2 : Math.min(m, Math.max(vh - ch - m, S.y));
+    }
+    function applyView(ease) {
+      clampView();
+      cam.classList.toggle("pnt-ss-ease", Boolean(ease));
+      cam.style.transform = `translate(${S.x}px, ${S.y}px) scale(${S.z})`;
+      const big = S.W * S.z > view.clientWidth - 2 || S.H * S.z > view.clientHeight - 2;
+      view.classList.toggle("pnt-ss-pan", big);
+      $('[data-z="toggle"]').textContent = Math.round(S.z * 100) + "%";
+      $('[data-z="fit"]').setAttribute("aria-pressed", String(S.mode === "fit"));
+      $('[data-z="out"]').disabled = S.z <= STUDIO_ZOOM_MIN + 1e-6;
+      $('[data-z="in"]').disabled = S.z >= STUDIO_ZOOM_MAX - 1e-6;
+      paintMini(big);
+    }
+    function fitView(ease) {
+      S.z = fitZoom();
+      S.mode = "fit";
+      applyView(ease);
+    }
+    function zoomAt(z, cx, cy, ease) {
+      z = Math.max(STUDIO_ZOOM_MIN, Math.min(STUDIO_ZOOM_MAX, z));
+      if (cx == null) { cx = view.clientWidth / 2; cy = view.clientHeight / 2; }
+      S.x = cx - (cx - S.x) * (z / S.z);
+      S.y = cy - (cy - S.y) * (z / S.z);
+      S.z = z;
+      S.mode = "free";
+      applyView(ease);
+    }
+    function zoomStep(dir) {
+      const next = dir > 0
+        ? STUDIO_ZOOM_STEPS.find((v) => v > S.z + 1e-6)
+        : [...STUDIO_ZOOM_STEPS].reverse().find((v) => v < S.z - 1e-6);
+      if (next != null) zoomAt(next, null, null, true);
+    }
+    const mini = $(".pnt-ss-mini"), ink = $(".pnt-ss-ink"), vwBox = $(".pnt-ss-vw");
+    function paintMini(big) {
+      mini.hidden = !big;
+      if (!big) return;
+      const k = Math.min(108 / S.W, 140 / S.H);
+      ink.style.width = S.W * k + "px";
+      ink.style.height = S.H * k + "px";
+      const l = -S.x / S.z, t = -S.y / S.z, w = view.clientWidth / S.z, h = view.clientHeight / S.z;
+      vwBox.style.left = Math.max(0, l * k) + "px";
+      vwBox.style.top = Math.max(0, t * k) + "px";
+      vwBox.style.width = Math.min(S.W, w) * k + "px";
+      vwBox.style.height = Math.min(S.H, h) * k + "px";
+    }
+    function miniGo(e) {
+      const r = ink.getBoundingClientRect(), k = r.width / S.W;
+      const cx = (e.clientX - r.left) / k, cy = (e.clientY - r.top) / k;
+      S.x = view.clientWidth / 2 - cx * S.z;
+      S.y = view.clientHeight / 2 - cy * S.z;
+      S.mode = "free";
+      applyView();
+    }
+
+    $(".pnt-ss-zoom").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      const a = b.dataset.z;
+      if (a === "in") zoomStep(1);
+      else if (a === "out") zoomStep(-1);
+      else if (a === "fit") fitView(true);
+      else if (a === "toggle") { if (S.mode === "fit") zoomAt(1, null, null, true); else fitView(true); }
+    });
+    view.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const r = view.getBoundingClientRect();
+      // A pinch arrives as a wheel with ctrlKey set.
+      if (e.ctrlKey || e.metaKey) zoomAt(S.z * Math.exp(-e.deltaY * 0.01), e.clientX - r.left, e.clientY - r.top);
+      else { S.x -= e.deltaX; S.y -= e.deltaY; applyView(); }
+    }, { passive: false });
+    view.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest(".pnt-ss-zoom, .pnt-ss-mini")) return;
+      S.drag = { px: e.clientX, py: e.clientY, x: S.x, y: S.y };
+      view.setPointerCapture(e.pointerId);
+      view.classList.add("pnt-ss-dragging");
+    });
+    view.addEventListener("pointermove", (e) => {
+      if (!S.drag) return;
+      S.x = S.drag.x + e.clientX - S.drag.px;
+      S.y = S.drag.y + e.clientY - S.drag.py;
+      applyView();
+    });
+    const endDrag = () => { S.drag = null; view.classList.remove("pnt-ss-dragging"); };
+    view.addEventListener("pointerup", endDrag);
+    view.addEventListener("pointercancel", endDrag);
+    view.addEventListener("dblclick", (e) => {
+      if (e.target.closest(".pnt-ss-zoom, .pnt-ss-mini")) return;
+      const r = view.getBoundingClientRect();
+      if (S.mode === "fit") zoomAt(1, e.clientX - r.left, e.clientY - r.top, true);
+      else fitView(true);
+    });
+    view.addEventListener("keydown", (e) => {
+      const k = e.key;
+      if (k === "+" || k === "=") zoomStep(1);
+      else if (k === "-" || k === "_") zoomStep(-1);
+      else if (k === "0") fitView(true);
+      else if (k === "1") zoomAt(1, null, null, true);
+      else if (k.startsWith("Arrow")) {
+        const n = e.shiftKey ? 200 : 60;
+        if (k === "ArrowUp") S.y += n;
+        if (k === "ArrowDown") S.y -= n;
+        if (k === "ArrowLeft") S.x += n;
+        if (k === "ArrowRight") S.x -= n;
+        S.mode = "free";
+        applyView(true);
+      } else return;
+      e.preventDefault();
+    });
+    let miniDrag = false;
+    mini.addEventListener("pointerdown", (e) => { miniDrag = true; mini.setPointerCapture(e.pointerId); miniGo(e); });
+    mini.addEventListener("pointermove", (e) => { if (miniDrag) miniGo(e); });
+    mini.addEventListener("pointerup", () => { miniDrag = false; });
+    S.resize = new ResizeObserver(() => (S.mode === "fit" ? fitView() : applyView()));
+    S.resize.observe(view);
+
+    // ----- Changes -----
+    function changed() {
+      paintControls();
+      paintTiles();
+      render();
+      S.dirty = true;
+      copyBtn.disabled = false;
+      copyBtn.textContent = "Copy";
+      status("Edited. Copy again to update the clipboard.");
+    }
+    side.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-key], [data-ss='tone']");
+      if (!b || b.disabled) return;
+      if (b.dataset.ss === "tone") prefs.shotTone = prefs.shotTone === "dark" ? "light" : "dark";
+      else if (prefs[b.dataset.key] === b.dataset.val) return;
+      else prefs[b.dataset.key] = b.dataset.val;
+      changed();
+    });
+    // Arrows walk a group, the radiogroup pattern the settings sheet uses.
+    side.addEventListener("keydown", (e) => {
+      const fwd = e.key === "ArrowRight" || e.key === "ArrowDown";
+      const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+      const b = e.target.closest("[data-key]");
+      if (!b || (!fwd && !back)) return;
+      e.preventDefault();
+      const opts = [...b.parentElement.querySelectorAll("[data-key]")].filter((o) => !o.disabled);
+      const i = opts.findIndex((o) => o.dataset.val === prefs[b.dataset.key]);
+      const next = opts[(i + (fwd ? 1 : -1) + opts.length) % opts.length];
+      prefs[b.dataset.key] = next.dataset.val;
+      changed();
+      next.focus();
+    });
+
+    async function exportBlob() {
+      const out = P.compose(shot.src, shot.meta, prefs);
+      return { blob: await canvasToBlob(out.canvas), name: shotFileName(shot.meta, out.scale), out };
+    }
+    copyBtn.addEventListener("click", async () => {
+      copyBtn.disabled = true;
+      status("Copying…");
+      try {
+        const { blob, name, out } = await exportBlob();
+        const ok = await writeImageToClipboard(blob, name);
+        S.dirty = false;
+        if (ok) status(`Copied ${out.canvas.width.toLocaleString()} × ${out.canvas.height.toLocaleString()} px`, "ok");
+        else {
+          status(`The clipboard was blocked, so it was saved to Downloads as ${name}.`, "warn");
+          copyBtn.disabled = false;
+          copyBtn.textContent = "Copy again";
+        }
+      } catch (err) {
+        copyBtn.disabled = false;
+        status("Failed to copy: " + err.message, "warn");
+      }
+    });
+    $('[data-ss="download"]').addEventListener("click", async () => {
+      try {
+        const { blob, name } = await exportBlob();
+        downloadBlob(blob, name);
+        status(`Saved ${name} to Downloads`, "ok");
+      } catch (err) {
+        status("Failed to save: " + err.message, "warn");
+      }
+    });
+    $('[data-ss="default"]').addEventListener("click", () => {
+      const payload = {};
+      for (const key of STUDIO_LOOK_KEYS) payload[key] = prefs[key];
+      Object.assign(shotPrefs, payload);
+      chrome.storage?.local.set(payload);
+      status("Saved as the default. Settings › Screenshot now matches.", "ok");
+    });
+    $('[data-ss="close"]').addEventListener("click", () => closeShotStudio());
+    $(".pnt-ss-dim").addEventListener("click", () => closeShotStudio());
+    // The page under the dim must not scroll while the studio is up.
+    $(".pnt-ss-dim").addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+
+    paintControls();
+    paintTiles();
+    if (init.copied === false) {
+      status(`The clipboard was blocked, so it was saved to Downloads as ${init.name}.`, "warn");
+      copyBtn.textContent = "Copy again";
+    } else {
+      status("Copied to clipboard", "ok");
+      copyBtn.disabled = true;
+    }
+    requestAnimationFrame(() => {
+      if (!studioEl) return;
+      studioEl.classList.add("pnt-ss-in");
+      render();
+      view.focus({ preventScroll: true });
+    });
+  }
+
+  function radiusText(radii) {
+    const r = radii.map((v) => Math.round(v));
+    return r.every((v) => v === r[0]) ? `${r[0]} px` : r.join(" ");
+  }
+
+  function closeShotStudio() {
+    if (!studioEl) return;
+    if (studio && studio.resize) studio.resize.disconnect();
+    studioEl.remove();
+    studioEl = null;
+    studio = null;
   }
 
   // ===== Toast =====
   // A toast is a sentence and a mark: a check for success, an alert for an
   // error. The loading affordance lives on the button itself (setButtonLoading),
   // so there is no loading toast.
-  function showToast(message, isError = false) {
+  // `plain` drops the mark, for a progress line that is neither.
+  function showToast(message, isError = false, { plain = false } = {}) {
     if (toastTimer) clearTimeout(toastTimer);
 
     if (!toastEl) {
@@ -9820,7 +10714,8 @@
     mark.innerHTML = isError ? ICONS.alert : ICONS.check;
     const text = document.createElement("span");
     text.textContent = message;
-    toastEl.append(mark, text);
+    if (plain) toastEl.append(text);
+    else toastEl.append(mark, text);
     toastEl.className = isError ? "pnt-toast-error" : "";
 
     const z = token("--pnt-z-chrome", "2147483647");

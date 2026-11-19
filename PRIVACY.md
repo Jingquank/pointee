@@ -24,7 +24,7 @@ All processing happens locally in your browser:
 
 1. When you activate Point Mode, the extension reads the DOM of the active tab to display element information (tag names, CSS classes, computed styles, dimensions)
 2. When you copy an element, the information is written directly to your system clipboard using the browser's Clipboard API
-3. When you capture a screenshot, the element is rendered to a canvas locally using the bundled html2canvas-pro library, then copied to your clipboard
+3. When you capture a screenshot, the extension takes a picture of the visible tab with Chrome's own `captureVisibleTab` (scrolling and taking more pictures if the element is taller than the window), crops it to the element, frames it, and copies it to your clipboard. Where Chrome refuses a tab capture, the element is rendered to a canvas locally with the bundled html2canvas-pro library instead. The pictures never leave your browser
 
 4. When you open the Edit panel, the extension reads the page's stylesheets to work out which design tokens it uses. A stylesheet served from another origin cannot be read by a script running in the page, so for those the extension re-requests the file — see *Stylesheet fetching* below.
 
@@ -39,10 +39,10 @@ The extension requests the following permissions, used solely for its core funct
 
 - **activeTab** — to read element information on the current page when you activate Point Mode
 - **clipboardWrite** — to copy element information and screenshots to your clipboard
-- **storage** — to remember your settings on this device: the theme and your measuring, editing and copying preferences. Nothing else is stored, and none of it ever leaves your browser. See *Data Storage* below.
+- **storage** — to remember your settings on this device: the theme and your measuring, editing, copying and screenshot preferences. Nothing else is stored, and none of it ever leaves your browser. See *Data Storage* below.
 - **scripting** — to inject the inspector into tabs that were already open when the extension was installed or updated. Without it, those tabs need a reload before Point Mode works.
 - **Content script matches (`<all_urls>`)** — to allow the inspector to run on any webpage you choose to inspect
-- **host_permissions (`<all_urls>`)** — to re-request stylesheets the page itself is not allowed to read, so the Edit panel can name the design tokens they define. Only ever used for that. See *Stylesheet fetching* below.
+- **host_permissions (`<all_urls>`)** — to re-request stylesheets the page itself is not allowed to read, so the Edit panel can name the design tokens they define (see *Stylesheet fetching* below), and to capture the visible tab when you take a screenshot. Only ever used for those two.
 
 ## Stylesheet fetching
 

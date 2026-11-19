@@ -636,6 +636,40 @@ probed. The one residual risk in lazy mode — `getContext("webgl2")` on a canva
 that truly has no context locks it to WebGL — is taken only for the single
 canvas the user selected, only after a whole observation window saw no draws.
 
+## A screenshot is a picture of the screen
+
+Until 3.1 the Screenshot action was html2canvas: it read the DOM and the
+computed styles and painted them again with its own renderer. Anything the
+browser draws outside that path — a video frame, a WebGL canvas without
+`preserveDrawingBuffer`, an iframe, a cross-origin image without CORS headers,
+`backdrop-filter`, a shadow root — came out blank, and that was most of what
+people asked to capture. The browser already has the composited picture, so
+the shot now asks for it: `chrome.tabs.captureVisibleTab` through the service
+worker, cropped to the element. html2canvas stays only as the fallback for a
+tab Chrome will not capture.
+
+One press runs three steps, chosen in the screenshot round as one pipeline
+rather than four competing ideas. **Hide what is on top**: everything that
+paints over the selection without being part of it, found by sampling
+`elementsFromPoint` on a grid over the element, is hidden for the capture
+frame with a `data-pnt-capture-hide` attribute and a rule in content.css — an
+attribute rather than an inline style, so the Edit Apply door
+(`test/edit-audit.mjs`) still holds — and Pointee's own chrome goes with it.
+**Capture the visible part.** **Scroll and stitch** when the element is bigger
+than the window, two captures a second (the API's quota), with fixed and sticky
+things hidden from the second tile on whatever the setting says. The scroll
+position and every hidden node are put back in a `finally`.
+
+The picture is drawn by `shot.js`, shared with the settings page the way
+`rail.js` is, so the rail's preview is the renderer itself. Its colours —
+backdrops, the window frame, the spec plate's ink — are page content, not
+chrome, and live in that file rather than in tokens.css. The default look is
+the round's pick: a backdrop sampled from the element's most common colour,
+24px of padding, a soft shadow, the element's own corners and 12px on the
+backdrop, at 2x. The studio is the place to change one shot; Set as default
+writes the look to the Settings section. A size Chromium cannot export (65,535
+px a side, 16,384² in area) is disabled rather than silently downsampled.
+
 ## Type styles: the composite is the token
 
 The token layer's original sin was pretending a design system hands out one

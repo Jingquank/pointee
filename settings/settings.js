@@ -75,9 +75,13 @@ const INSPECTOR_PREFS = {
   inspectorLayerAid: ["ghost", "plate", "halo"],
 };
 
+// The screenshot roster is not mirrored: shot.js holds it, and this page loads
+// shot.js for the preview anyway.
+const SHOT_PREFS = window.pntShot ? window.pntShot.PREFS : {};
+
 // One roster for everything the sheet writes, so a new setting only has to be
 // added to the map above to get storage, keyboard, and live-sync for free.
-const ALL_PREFS = { ...REDLINE_PREFS, ...EDIT_PREFS, ...COPY_PREFS, ...INSPECTOR_PREFS };
+const ALL_PREFS = { ...REDLINE_PREFS, ...EDIT_PREFS, ...COPY_PREFS, ...INSPECTOR_PREFS, ...SHOT_PREFS };
 
 const prefs = {};
 for (const key of Object.keys(ALL_PREFS)) prefs[key] = ALL_PREFS[key][0];
@@ -259,6 +263,11 @@ const sheetEl = document.getElementById("measure-sheet");
 const editSheetEl = document.getElementById("edit-sheet");
 const copySheetEl = document.getElementById("copy-sheet");
 const inspectSheetEl = document.getElementById("inspect-sheet");
+const shotSheetEl = document.getElementById("shot-sheet");
+const shotResetEl = document.getElementById("shot-reset");
+const savedShot = document.getElementById("saved-shot");
+const shotCanvasEl = document.getElementById("shot-canvas");
+const shotNoteEl = document.getElementById("shot-note");
 const editMockEl = document.getElementById("edit-mock");
 const payEl = document.getElementById("copy-pay");
 const payOutEl = document.getElementById("copy-out");
@@ -430,7 +439,7 @@ function applyPreset(name) {
 }
 
 // All three sheets, so a control is painted wherever it lives.
-const controlHosts = [sheetEl, editSheetEl, copySheetEl, inspectSheetEl].filter(Boolean);
+const controlHosts = [sheetEl, editSheetEl, copySheetEl, inspectSheetEl, shotSheetEl].filter(Boolean);
 const eachControl = (selector, fn) => {
   for (const host of controlHosts) for (const node of host.querySelectorAll(selector)) fn(node);
 };
@@ -476,6 +485,14 @@ function paintPrefs() {
     copyResetEl.disabled = Object.keys(COPY_PREFS)
       .every((key) => prefs[key] === COPY_PREFS[key][0]);
   }
+  if (shotResetEl) {
+    shotResetEl.disabled = Object.keys(SHOT_PREFS)
+      .every((key) => prefs[key] === SHOT_PREFS[key][0]);
+  }
+  // Backdrop corners mean nothing without a backdrop.
+  const frameRow = shotSheetEl?.querySelector('[data-hi="frame"]');
+  if (frameRow) frameRow.hidden = prefs.shotBackdrop === "none";
+  paintShot();
   paintPayload();
   vigEl.dataset.placement = prefs.redlinePillPlacement;
   vigEl.dataset.guides = prefs.redlineGuides;
@@ -505,6 +522,70 @@ function paintInspectorMock() {
     const hex = chip.querySelector(".pnt-insp-hex");
     if (hex) hex.textContent = /^#[0-9a-f]{3,8}$/i.test(raw) ? raw.toUpperCase() : raw;
   }
+}
+
+// ===== The screenshot preview =====
+// A stand-in for a captured element: a pricing card drawn once at 2x, with the
+// 16px corners a real card would report. The rail's picture is shot.js
+// composing it with the settings above — the camera's own renderer.
+const SHOT_CARD = { w: 236, h: 196, radii: [16, 16, 16, 16], label: "div.plan-card.is-pro", host: "fieldnote.app", pageBg: "#f6f6f8" };
+let shotCardSrc = null;
+
+function shotCard() {
+  if (shotCardSrc) return shotCardSrc;
+  const k = 2, { w, h } = SHOT_CARD;
+  const c = document.createElement("canvas");
+  c.width = w * k;
+  c.height = h * k;
+  const ctx = c.getContext("2d");
+  ctx.scale(k, k);
+  // Page content, not chrome: these are the card's own colours.
+  ctx.fillStyle = "#183a2d";
+  ctx.fillRect(0, 0, w, h);
+  const font = (weight, size) => `${weight} ${size}px Geist, system-ui, sans-serif`;
+  ctx.fillStyle = "#f1eee6";
+  ctx.font = font(600, 14);
+  ctx.fillText("Pro", 20, 34);
+  ctx.fillStyle = "#c9f26b";
+  ctx.beginPath();
+  ctx.roundRect(142, 21, 74, 18, 6);
+  ctx.fill();
+  ctx.fillStyle = "#183a2d";
+  ctx.font = font(600, 11);
+  ctx.fillText("Most popular", 149, 34);
+  ctx.fillStyle = "#f1eee6";
+  ctx.font = font(600, 30);
+  ctx.fillText("$24", 20, 78);
+  ctx.globalAlpha = 0.7;
+  ctx.font = font(400, 12);
+  ctx.fillText("per seat / month", 80, 78);
+  ctx.fillText("✓  Unlimited projects", 20, 106);
+  ctx.fillText("✓  Version history for 90 days", 20, 126);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#c9f26b";
+  ctx.beginPath();
+  ctx.roundRect(20, 146, w - 40, 32, 9);
+  ctx.fill();
+  ctx.fillStyle = "#183a2d";
+  ctx.font = font(500, 13);
+  ctx.textAlign = "center";
+  ctx.fillText("Start free trial", w / 2, 166);
+  shotCardSrc = c;
+  return c;
+}
+
+function paintShot() {
+  if (!shotCanvasEl || !window.pntShot) return;
+  const shot = window.pntShot;
+  const look = {};
+  for (const key of Object.keys(SHOT_PREFS)) look[key] = prefs[key];
+  const src = shotCard();
+  // Drawn at 2x for a crisp rail, then shown at the size the rail allows.
+  const out = shot.compose(src, { ...SHOT_CARD, sample: shot.sample(src) }, look, { scale: 2, canvas: shotCanvasEl, checker: true });
+  const L = out.layout;
+  shotCanvasEl.style.width = L.W + "px";
+  const fits = shot.fitScale(L.W, L.H, Number(prefs.shotScale));
+  shotNoteEl.textContent = `${Math.round(L.W * fits)} × ${Math.round(L.H * fits)} px PNG`;
 }
 
 // Feedback lands in the section where the change happened, and it does not
@@ -550,6 +631,7 @@ function noteFor(key) {
   if (key in EDIT_PREFS) return savedEditing;
   if (key in COPY_PREFS) return savedCopying;
   if (key in INSPECTOR_PREFS) return savedAppearance;
+  if (key in SHOT_PREFS) return savedShot;
   return savedMeasuring;
 }
 
@@ -608,6 +690,7 @@ function restore(roster, note) {
 
 resetEl.addEventListener("click", () => restore(REDLINE_PREFS, savedMeasuring));
 copyResetEl?.addEventListener("click", () => restore(COPY_PREFS, savedCopying));
+shotResetEl?.addEventListener("click", () => restore(SHOT_PREFS, savedShot));
 
 // The resolved chips are the preview's own state — nothing is stored, and the
 // note under the payload explains what flipping them proves.
@@ -656,6 +739,9 @@ for (const row of document.querySelectorAll(".sp-spec")) {
   // Each row spotlights inside whichever preview its section owns. The copy
   // payload is text rather than drawn geometry, so it lights up the line the
   // row writes instead of taking a data-hi of its own.
+  // The screenshot rows redraw the whole shot instead; there is no part of it
+  // to single out that the picture does not already show.
+  if (row.closest('[data-focus="shot"]')) continue;
   const inCopy = Boolean(row.closest('[data-focus="copy"]'));
   const target = row.closest('[data-focus="edit"]') ? editMockEl : vigEl;
   const spotlight = () => {

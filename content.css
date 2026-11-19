@@ -126,6 +126,14 @@
     transition: none;
   }
 
+  /* The screenshot studio arrives and zooms with an ease; stillness means it
+     appears and jumps instead. */
+  #pnt-shot-studio .pnt-ss-panel,
+  #pnt-shot-studio .pnt-ss-dim,
+  #pnt-shot-studio .pnt-ss-cam.pnt-ss-ease {
+    transition: none;
+  }
+
   /* The rail's fade and the scroll shadows' fade are state changes, not
      motion of their own, but stillness means they switch rather than ease. */
   .pnt-rail,
@@ -2807,6 +2815,462 @@
 
 #pnt-toast.pnt-toast-error .pnt-toast-icon {
   color: var(--pnt-danger);
+}
+
+/* ===== Screenshot Capture =====
+   For the frames a capture is taken in, Pointee's own chrome is not there:
+   the page is photographed as it is without the tool. The toast stays between
+   tiles of a stitch so the progress can be read, and goes for the grab itself.
+   A page node that paints over the selection is hidden by the attribute
+   content.js sets on it and removes in the same breath. */
+html.pnt-capturing [id^="pnt-"]:not(#pnt-toast),
+html.pnt-capturing.pnt-grabbing #pnt-toast,
+[data-pnt-capture-hide] {
+  visibility: hidden !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+/* ===== Screenshot Studio =====
+   The workbench a shot opens in (Pointee Screenshot Lab, idea 15): a dim over
+   the page, and one glass panel — preview on the left, Style, Frame and Export
+   on the right, the actions along the foot. The preview is a canvas the real
+   renderer (shot.js) draws; nothing here paints the shot itself. */
+#pnt-shot-studio {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: var(--pnt-z-chrome);
+  font: var(--pnt-text-base)/var(--pnt-leading-base) var(--pnt-font);
+  color: var(--pnt-text-1);
+}
+
+#pnt-shot-studio *,
+#pnt-shot-studio *::before,
+#pnt-shot-studio *::after {
+  box-sizing: border-box;
+}
+
+#pnt-shot-studio .pnt-ss-dim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--pnt-surface-0) 55%, transparent);
+  opacity: 0;
+  transition: opacity var(--pnt-duration) var(--pnt-ease);
+}
+
+#pnt-shot-studio .pnt-ss-panel {
+  position: absolute;
+  inset: max(24px, 4vh) max(24px, 4vw);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--pnt-glass);
+  -webkit-backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  border: 1px solid var(--pnt-border-2);
+  border-radius: var(--pnt-radius-lg);
+  box-shadow: var(--pnt-shadow-2), var(--pnt-shadow-1);
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-slow) var(--pnt-ease);
+}
+
+#pnt-shot-studio.pnt-ss-in .pnt-ss-dim,
+#pnt-shot-studio.pnt-ss-in .pnt-ss-panel {
+  opacity: 1;
+  transform: none;
+}
+
+#pnt-shot-studio button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font: inherit;
+}
+
+#pnt-shot-studio button:focus-visible {
+  outline: var(--pnt-ring) solid var(--pnt-focus);
+  outline-offset: 2px;
+}
+
+#pnt-shot-studio button:disabled {
+  opacity: var(--pnt-opacity-disabled);
+  cursor: default;
+}
+
+#pnt-shot-studio svg {
+  width: var(--pnt-icon);
+  height: var(--pnt-icon);
+  display: block;
+}
+
+/* Head and foot */
+#pnt-shot-studio .pnt-ss-head,
+#pnt-shot-studio .pnt-ss-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--pnt-md);
+  padding: var(--pnt-md) var(--pnt-md) var(--pnt-md) var(--pnt-xl);
+  flex: none;
+}
+
+#pnt-shot-studio .pnt-ss-head { border-bottom: 1px solid var(--pnt-border-1); }
+#pnt-shot-studio .pnt-ss-foot { border-top: 1px solid var(--pnt-border-1); }
+
+#pnt-shot-studio .pnt-ss-head b {
+  font-size: var(--pnt-text-lg);
+  font-weight: var(--pnt-weight-bold);
+}
+
+#pnt-shot-studio .pnt-ss-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pnt-text-3);
+  font: var(--pnt-text-sm) var(--pnt-font-mono);
+  margin-right: auto;
+}
+
+#pnt-shot-studio .pnt-ss-x {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--pnt-radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--pnt-text-3);
+}
+
+#pnt-shot-studio .pnt-ss-x:hover {
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-1);
+}
+
+#pnt-shot-studio .pnt-ss-status {
+  margin-right: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pnt-sm);
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+}
+
+#pnt-shot-studio .pnt-ss-status.pnt-ss-ok { color: var(--pnt-ok); }
+#pnt-shot-studio .pnt-ss-status.pnt-ss-warn { color: var(--pnt-danger); }
+#pnt-shot-studio .pnt-ss-mark { flex: none; display: flex; }
+
+#pnt-shot-studio .pnt-ss-file {
+  color: var(--pnt-text-3);
+  font: var(--pnt-text-sm) var(--pnt-font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+}
+
+#pnt-shot-studio .pnt-ss-link {
+  color: var(--pnt-text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--pnt-border-3);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+#pnt-shot-studio .pnt-ss-link:hover { color: var(--pnt-text-1); }
+
+#pnt-shot-studio .pnt-ss-btn {
+  height: 32px;
+  padding: 0 var(--pnt-btn-x);
+  border-radius: var(--pnt-radius-md);
+  border: 1px solid var(--pnt-border-3);
+  font-weight: var(--pnt-weight-medium);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+#pnt-shot-studio .pnt-ss-btn:hover:not(:disabled) { background: var(--pnt-surface-2); }
+#pnt-shot-studio .pnt-ss-btn:active:not(:disabled) { transform: scale(0.97); }
+
+#pnt-shot-studio .pnt-ss-primary {
+  background: var(--pnt-accent);
+  border-color: var(--pnt-accent);
+  color: var(--pnt-on-accent);
+}
+
+#pnt-shot-studio .pnt-ss-primary:hover:not(:disabled) { background: var(--pnt-accent-hover); }
+
+/* Body: the preview takes what the side panel leaves. */
+#pnt-shot-studio .pnt-ss-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+}
+
+/* ----- Preview ----- */
+#pnt-shot-studio .pnt-ss-view {
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  border-right: 1px solid var(--pnt-border-1);
+  background-color: var(--pnt-surface-1);
+  background-image: radial-gradient(color-mix(in srgb, var(--pnt-text-1) 9%, transparent) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+
+#pnt-shot-studio .pnt-ss-view:focus-visible { box-shadow: inset 0 0 0 var(--pnt-ring) var(--pnt-focus); }
+#pnt-shot-studio .pnt-ss-view.pnt-ss-pan { cursor: grab; }
+#pnt-shot-studio .pnt-ss-view.pnt-ss-pan.pnt-ss-dragging { cursor: grabbing; }
+
+#pnt-shot-studio .pnt-ss-cam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+#pnt-shot-studio .pnt-ss-cam.pnt-ss-ease { transition: transform var(--pnt-duration-slow) var(--pnt-ease); }
+#pnt-shot-studio .pnt-ss-cam canvas { display: block; }
+
+#pnt-shot-studio .pnt-ss-dims {
+  position: absolute;
+  top: var(--pnt-md);
+  right: var(--pnt-md);
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+#pnt-shot-studio .pnt-ss-zoom,
+#pnt-shot-studio .pnt-ss-mini {
+  position: absolute;
+  bottom: var(--pnt-md);
+  background: var(--pnt-glass);
+  -webkit-backdrop-filter: blur(var(--pnt-blur));
+  backdrop-filter: blur(var(--pnt-blur));
+  border: 1px solid var(--pnt-border-2);
+  box-shadow: var(--pnt-shadow-1);
+}
+
+#pnt-shot-studio .pnt-ss-zoom {
+  left: var(--pnt-md);
+  display: flex;
+  align-items: center;
+  gap: var(--pnt-gap-tight);
+  padding: var(--pnt-gap-pair);
+  border-radius: var(--pnt-radius-md);
+}
+
+#pnt-shot-studio .pnt-ss-zoom button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 var(--pnt-sm);
+  border-radius: var(--pnt-radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--pnt-text-2);
+  font-size: var(--pnt-text-sm);
+  font-weight: var(--pnt-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+#pnt-shot-studio .pnt-ss-zoom button:hover:not(:disabled) {
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-1);
+}
+
+#pnt-shot-studio .pnt-ss-zoom button[aria-pressed="true"] { color: var(--pnt-accent); }
+#pnt-shot-studio .pnt-ss-pct { min-width: 54px; }
+
+#pnt-shot-studio .pnt-ss-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--pnt-gap-tight);
+  background: var(--pnt-border-2);
+}
+
+#pnt-shot-studio .pnt-ss-mini {
+  right: var(--pnt-md);
+  width: 120px;
+  padding: var(--pnt-sm) 0;
+  border-radius: var(--pnt-radius-sm);
+  cursor: pointer;
+}
+
+#pnt-shot-studio .pnt-ss-mini[hidden] { display: none; }
+
+#pnt-shot-studio .pnt-ss-ink {
+  position: relative;
+  margin: 0 auto;
+  border-radius: 3px;
+  background: var(--pnt-border-3);
+}
+
+#pnt-shot-studio .pnt-ss-vw {
+  position: absolute;
+  border: 1.5px solid var(--pnt-accent);
+  border-radius: 2px;
+  background: var(--pnt-accent-soft);
+}
+
+/* ----- Side panel ----- */
+#pnt-shot-studio .pnt-ss-side {
+  overflow-y: auto;
+  padding: var(--pnt-xs) var(--pnt-xl) var(--pnt-xl);
+}
+
+#pnt-shot-studio .pnt-ss-group {
+  display: grid;
+  gap: var(--pnt-lg);
+  padding: var(--pnt-xl) 0;
+  border-bottom: 1px solid var(--pnt-border-1);
+}
+
+#pnt-shot-studio .pnt-ss-group:last-child { border-bottom: 0; }
+
+#pnt-shot-studio .pnt-ss-cat {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  font-size: var(--pnt-text-micro);
+  font-weight: var(--pnt-weight-medium);
+  letter-spacing: var(--pnt-tracking-caps);
+  text-transform: uppercase;
+  color: var(--pnt-text-3);
+}
+
+#pnt-shot-studio .pnt-ss-field { display: grid; gap: var(--pnt-gap-section); }
+#pnt-shot-studio .pnt-ss-field[hidden] { display: none; }
+
+#pnt-shot-studio .pnt-ss-fh {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pnt-gap-section);
+}
+
+#pnt-shot-studio .pnt-ss-val {
+  margin-left: auto;
+  color: var(--pnt-text-3);
+  font-size: var(--pnt-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+#pnt-shot-studio .pnt-ss-note {
+  margin: 0;
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+}
+
+#pnt-shot-studio .pnt-ss-note[hidden] { display: none; }
+#pnt-shot-studio .pnt-ss-note.pnt-ss-warn { color: var(--pnt-danger); }
+
+/* The settings sheet's segmented control (settings.css .sp-seg), stretched to
+   the column so every option shares the width. */
+#pnt-shot-studio .pnt-ss-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--pnt-surface-2);
+  border: 1px solid var(--pnt-border-1);
+  border-radius: var(--pnt-radius-md);
+}
+
+#pnt-shot-studio .pnt-ss-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: 5px var(--pnt-xs);
+  border-radius: var(--pnt-radius-sm);
+  color: var(--pnt-text-3);
+  font: var(--pnt-weight-medium) var(--pnt-text-sm)/var(--pnt-leading-tight) var(--pnt-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--pnt-duration) var(--pnt-ease), color var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+#pnt-shot-studio .pnt-ss-seg button:hover:not(:disabled) { color: var(--pnt-text-1); }
+#pnt-shot-studio .pnt-ss-seg button:active:not(:disabled) { transform: scale(0.97); }
+
+#pnt-shot-studio .pnt-ss-seg button[aria-checked="true"] {
+  background: var(--pnt-surface-0);
+  color: var(--pnt-text-1);
+  box-shadow: 0 0 0 1px var(--pnt-border-2);
+}
+
+/* Backdrop tiles: each one the real renderer at thumbnail size. */
+#pnt-shot-studio .pnt-ss-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--pnt-sm);
+}
+
+#pnt-shot-studio .pnt-ss-tile {
+  display: grid;
+  gap: var(--pnt-gap-base);
+  justify-items: center;
+  color: var(--pnt-text-3);
+  font-size: var(--pnt-text-micro);
+  font-weight: var(--pnt-weight-medium);
+}
+
+#pnt-shot-studio .pnt-ss-pic {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 108 / 96;
+  border-radius: var(--pnt-radius-sm);
+  box-shadow: 0 0 0 1px var(--pnt-border-2);
+  transition: box-shadow var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+#pnt-shot-studio .pnt-ss-tile:hover .pnt-ss-pic { box-shadow: 0 0 0 1px var(--pnt-border-3); }
+#pnt-shot-studio .pnt-ss-tile:active .pnt-ss-pic { transform: scale(0.97); }
+#pnt-shot-studio .pnt-ss-tile:focus-visible { outline: none; }
+#pnt-shot-studio .pnt-ss-tile:focus-visible .pnt-ss-pic { box-shadow: 0 0 0 var(--pnt-ring) var(--pnt-focus); }
+#pnt-shot-studio .pnt-ss-tile[aria-checked="true"] { color: var(--pnt-text-1); }
+
+#pnt-shot-studio .pnt-ss-tile[aria-checked="true"] .pnt-ss-pic {
+  box-shadow: 0 0 0 var(--pnt-ring) var(--pnt-accent), 0 0 0 4px var(--pnt-accent-soft);
+}
+
+/* Light or dark ground: one button whose icon is the state. */
+#pnt-shot-studio .pnt-ss-tone {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--pnt-radius-sm);
+  border: 1px solid var(--pnt-border-1);
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-2);
+  display: grid;
+  place-items: center;
+  transition: color var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+#pnt-shot-studio .pnt-ss-tone:hover { color: var(--pnt-text-1); border-color: var(--pnt-border-3); }
+#pnt-shot-studio .pnt-ss-tone:active { transform: scale(0.94); }
+#pnt-shot-studio .pnt-ss-tone svg:last-child { display: none; }
+#pnt-shot-studio .pnt-ss-tone[aria-pressed="true"] svg:first-child { display: none; }
+#pnt-shot-studio .pnt-ss-tone[aria-pressed="true"] svg:last-child { display: block; }
+
+/* A narrow window stacks the panel under the preview. */
+@media (max-width: 760px) {
+  #pnt-shot-studio .pnt-ss-panel { inset: var(--pnt-md); }
+  #pnt-shot-studio .pnt-ss-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 45%); }
+  #pnt-shot-studio .pnt-ss-view { border-right: 0; border-bottom: 1px solid var(--pnt-border-1); }
+  #pnt-shot-studio .pnt-ss-file { display: none; }
 }
 
 /* ===== Point Mode Cursor ===== */

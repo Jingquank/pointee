@@ -73,6 +73,31 @@ viewport. Since 3.0, a separate capsule directly under the inspector — the two
 are placed as one unit but stay two surfaces.
 _Avoid_: action bar, bar.
 
+**Shot** — what the Screenshot action produces: the element's real pixels
+(captured from the tab, stitched when it is taller than the window), framed by
+the *presentation*. The capture is taken once; restyling a shot redraws the
+frame around the same pixels and never captures again.
+_Avoid_: screenshot for the picture (Screenshot is the action), capture for the
+finished image (the capture is the raw pixels, before framing).
+
+**Backdrop** — what a shot sits on: *colour* (sampled from the element's own
+most common colour, the default), *grid*, *spec* (the grid with the element's
+dimensions and selector drawn on), *window* (a browser frame), or *none* (a
+transparent PNG). Light or dark. Its corners are the *backdrop corners*, 12px by
+default; the element's own are the *element corners*, which match the element.
+
+**Studio** — the modal a shot opens in: the preview, which zooms and pans, and
+the presentation in three groups, Style, Frame and Export. The shot is already
+on the clipboard when it opens. *Set as default* writes its look to the
+Screenshot section in Settings.
+_Avoid_: editor (Edit is the panel that tunes the page), tray (the round-four
+idea it replaced).
+
+**Hide what's on top** — the capture's isolation: anything that paints over the
+selection without being part of it is hidden for the frame of the shot, then
+put back. Fixed and sticky things are always hidden from the second tile of a
+stitch, so they do not repeat down the picture.
+
 **Selection layout** — retired in 3.0. There were four (pill on the element's
 edge, spine, strip, bar) and a preference to choose between them; now there is
 one arrangement and no preference: the toolbar is its own capsule directly

@@ -17,7 +17,7 @@ Pointee is the new name of Claude Code Probe. Same extension, same listing, from
 | Action | On the clipboard |
 |---|---|
 | **Copy Code** | A pointer: source location when your tooling exposes one, page, a unique anchor, selector, position among siblings, whether it is one of a repeated template, its text, and its HTML at the depth you choose |
-| **Screenshot** | A PNG of the element alone |
+| **Screenshot** | A PNG of the element as it really renders — video, canvas and embeds included — framed on a backdrop sampled from its own colour, and a studio to restyle the shot before you paste it |
 | **Edit** | Opens a panel that tunes the element live — type, spacing, size, fill, border, shadow — and copies the pointer plus a before → after list of what changed |
 | **Select Parent** | Moves the selection up one level; click again to keep climbing |
 | **Measure** | Hold **Option** (Alt) and point at another element: redlines with the distance across every gap |

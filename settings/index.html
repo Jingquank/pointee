@@ -38,6 +38,7 @@
           <li><a href="#sec-measure" data-focus="measure">Measuring</a></li>
           <li><a href="#sec-edit" data-focus="edit">Editing</a></li>
           <li><a href="#sec-copy" data-focus="copy">Copying</a></li>
+          <li><a href="#sec-shot" data-focus="shot">Screenshot</a></li>
         </ul>
         <footer class="sp-footer">
           <p>Stored on this device. Nothing leaves it.</p>
@@ -365,6 +366,95 @@
         </div>
       </section>
 
+      <!-- The screenshot sheet. What the camera puts on the clipboard: the
+           element framed on a backdrop. The rail draws the real shot with
+           shot.js, the same renderer the content script uses, on a stand-in
+           card. The studio that opens after a shot changes the same keys
+           with Set as default. -->
+      <section class="sp-section" data-focus="shot" id="sec-shot" aria-labelledby="shot-legend">
+        <h2 class="sp-legend" id="shot-legend">Screenshot</h2>
+        <div class="sp-section-body">
+          <p class="sp-sub">
+            What the camera in the toolbar copies. It takes the element's real
+            pixels — video, canvas and embeds included — and frames them on a
+            backdrop. These are the defaults every shot starts from; the studio
+            that opens after a shot can change one shot, or save its look here.
+          </p>
+
+          <div class="sp-sheet" id="shot-sheet">
+            <div class="sp-sheet-group">
+              <p class="sp-sheet-cat" aria-hidden="true">Style</p>
+              <div class="sp-spec" data-hi="backdrop">
+                <span class="sp-spec-label" id="lbl-shotBackdrop">Backdrop</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotBackdrop"><button type="button" role="radio" data-set="shotBackdrop" data-val="colour">colour</button><button type="button" role="radio" data-set="shotBackdrop" data-val="grid">grid</button><button type="button" role="radio" data-set="shotBackdrop" data-val="plate">spec</button><button type="button" role="radio" data-set="shotBackdrop" data-val="window">window</button><button type="button" role="radio" data-set="shotBackdrop" data-val="none">none</button></span>
+              </div>
+              <div class="sp-spec" data-hi="backdrop">
+                <span class="sp-spec-label" id="lbl-shotTone">Background</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotTone"><button type="button" role="radio" data-set="shotTone" data-val="light">light</button><button type="button" role="radio" data-set="shotTone" data-val="dark">dark</button></span>
+              </div>
+            </div>
+            <div class="sp-sheet-group">
+              <p class="sp-sheet-cat" aria-hidden="true">Frame</p>
+              <div class="sp-spec" data-hi="padding">
+                <span class="sp-spec-label" id="lbl-shotPadding">Padding</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotPadding"><button type="button" role="radio" data-set="shotPadding" data-val="s">S</button><button type="button" role="radio" data-set="shotPadding" data-val="m">M</button><button type="button" role="radio" data-set="shotPadding" data-val="l">L</button></span>
+              </div>
+              <div class="sp-spec" data-hi="corners">
+                <span class="sp-spec-label" id="lbl-shotCorners">Element corners</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotCorners"><button type="button" role="radio" data-set="shotCorners" data-val="match">match</button><button type="button" role="radio" data-set="shotCorners" data-val="0">0</button><button type="button" role="radio" data-set="shotCorners" data-val="8">8</button><button type="button" role="radio" data-set="shotCorners" data-val="12">12</button><button type="button" role="radio" data-set="shotCorners" data-val="20">20</button></span>
+              </div>
+              <div class="sp-spec" data-hi="frame">
+                <span class="sp-spec-label" id="lbl-shotFrameCorners">Backdrop corners</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotFrameCorners"><button type="button" role="radio" data-set="shotFrameCorners" data-val="0">0</button><button type="button" role="radio" data-set="shotFrameCorners" data-val="12">12</button><button type="button" role="radio" data-set="shotFrameCorners" data-val="20">20</button><button type="button" role="radio" data-set="shotFrameCorners" data-val="28">28</button></span>
+              </div>
+              <div class="sp-spec" data-hi="shadow">
+                <span class="sp-spec-label" id="lbl-shotShadow">Shadow</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotShadow"><button type="button" role="radio" data-set="shotShadow" data-val="none">none</button><button type="button" role="radio" data-set="shotShadow" data-val="subtle">subtle</button><button type="button" role="radio" data-set="shotShadow" data-val="soft">soft</button><button type="button" role="radio" data-set="shotShadow" data-val="deep">deep</button><button type="button" role="radio" data-set="shotShadow" data-val="float">float</button></span>
+              </div>
+            </div>
+            <div class="sp-sheet-group">
+              <p class="sp-sheet-cat" aria-hidden="true">Export</p>
+              <div class="sp-spec" data-hi="size">
+                <span class="sp-spec-label" id="lbl-shotScale">Size</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <span class="sp-seg" role="radiogroup" aria-labelledby="lbl-shotScale"><button type="button" role="radio" data-set="shotScale" data-val="1">1x</button><button type="button" role="radio" data-set="shotScale" data-val="2">2x</button><button type="button" role="radio" data-set="shotScale" data-val="3">3x</button></span>
+              </div>
+              <p class="sp-note">
+                Always a PNG. A size Chrome cannot export — over 65,535 px on a
+                side — steps down to the largest one it can.
+              </p>
+            </div>
+            <div class="sp-sheet-group">
+              <p class="sp-sheet-cat" aria-hidden="true">Capture</p>
+              <div class="sp-spec" data-hi="isolate">
+                <span class="sp-spec-label" id="lbl-shotIsolate">Hide what's on top</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <button type="button" class="sp-switch" role="switch" data-sw="shotIsolate" aria-labelledby="lbl-shotIsolate"></button>
+              </div>
+              <div class="sp-spec" data-hi="studio">
+                <span class="sp-spec-label" id="lbl-shotStudio">Open the studio after each shot</span>
+                <i class="sp-spec-leader" aria-hidden="true"></i>
+                <button type="button" class="sp-switch" role="switch" data-sw="shotStudio" aria-labelledby="lbl-shotStudio"></button>
+              </div>
+              <p class="sp-note">
+                A sticky header, a chat bubble or a cookie bar over the element
+                is hidden for the moment of the shot, then put back. Fixed and
+                sticky things are always hidden from the second tile of a long
+                element on, or they would repeat down the stitched picture.
+              </p>
+            </div>
+          </div>
+          <button type="button" class="sp-reset" id="shot-reset">Reset to defaults</button>
+          <p class="sp-saved" id="saved-shot" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
     </div>
 
     <!--
@@ -387,6 +477,7 @@
           <span class="sp-tag" data-pv="measure">measuring</span>
           <span class="sp-tag" data-pv="edit">editing</span>
           <span class="sp-tag" data-pv="copy">copying</span>
+          <span class="sp-tag" data-pv="shot">screenshot</span>
         </span>
       </h2>
       <!-- Both subs share one grid cell so the crossfade swaps them in place
@@ -404,6 +495,10 @@
           The panel that opens on the pencil, at its real scale — a group of
           rows, a value that types, arrows and scrubs, and the token stepper
           beside it.
+        </p>
+        <p class="sp-sub" data-pv="shot">
+          A shot of a stand-in card, drawn by the renderer the camera uses, from
+          the settings on the left.
         </p>
         <p class="sp-sub" data-pv="copy">
           The clipboard payload for one real element — a row in an invoice
@@ -648,6 +743,10 @@
           <pre class="sp-pay-out" id="copy-out" aria-live="polite"></pre>
           <p class="sp-pay-note" id="copy-note"></p>
         </div>
+        <div class="sp-shot" id="shot-pv">
+          <canvas id="shot-canvas" aria-label="Screenshot preview"></canvas>
+          <p class="sp-shot-note" id="shot-note"></p>
+        </div>
       </div>
       </div>
     </aside>
@@ -656,6 +755,7 @@
 </main>
 
 <script src="../rail.js"></script>
+<script src="../shot.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

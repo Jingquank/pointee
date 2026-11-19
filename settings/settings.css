@@ -605,8 +605,35 @@ body {
 .sp-preview > .pnt-mock,
 .sp-preview > .sp-vig,
 .sp-preview > .ep-mock,
-.sp-preview > .sp-pay {
+.sp-preview > .sp-pay,
+.sp-preview > .sp-shot {
   grid-area: 1 / 1;
+}
+
+/* ===== The screenshot preview =====
+   The shot itself, drawn by shot.js on a stand-in card and shown at a scale
+   that fits the rail. The canvas carries its own corners and shadow, so the
+   frame here adds nothing to it. */
+.sp-shot {
+  display: grid;
+  gap: var(--pnt-sm);
+  justify-items: center;
+  align-content: center;
+  min-width: 0;
+  padding: var(--pnt-md) 0;
+}
+
+.sp-shot canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.sp-shot-note {
+  margin: 0;
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ===== The copy payload =====
@@ -903,10 +930,12 @@ body {
 .sp-rail:not([data-mode="measure"]) .sp-vig,
 .sp-rail:not([data-mode="edit"]) .ep-mock,
 .sp-rail:not([data-mode="copy"]) .sp-pay,
+.sp-rail:not([data-mode="shot"]) .sp-shot,
 .sp-rail[data-mode="theme"] [data-pv]:not([data-pv="theme"]),
 .sp-rail[data-mode="measure"] [data-pv]:not([data-pv="measure"]),
 .sp-rail[data-mode="edit"] [data-pv]:not([data-pv="edit"]),
-.sp-rail[data-mode="copy"] [data-pv]:not([data-pv="copy"]) {
+.sp-rail[data-mode="copy"] [data-pv]:not([data-pv="copy"]),
+.sp-rail[data-mode="shot"] [data-pv]:not([data-pv="shot"]) {
   opacity: 0;
   visibility: hidden;
 }
