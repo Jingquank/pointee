@@ -2090,7 +2090,9 @@ try {
       const out = {};
       for (const bd of ["colour", "grid", "none"]) {
         chrome.storage.local.set({ shotBackdrop: bd });
-        await new Promise((r) => setTimeout(r, 20));
+        // Let the previous shot's button state run out, so each shot starts
+        // from a resting button on a loaded machine too.
+        await new Promise((r) => setTimeout(r, bd === "colour" ? 20 : 1700));
         ${SHOOT.replace(/const /g, "var ")}
         const pic = blob ? await createImageBitmap(blob) : null;
         if (!pic) { out[bd] = "no PNG: " + shot.toast; continue; }
