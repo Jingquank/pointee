@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR"
 rm -rf dist
 mkdir -p dist/chrome
 
-SRC_FILES="manifest.json background.js rail.js shot.js content.js shader-agent.js tokens.css content.css"
+SRC_FILES="manifest.json background.js rail.js shot.js content.js shader-agent.js tokens.css content.css studio.css"
 SRC_DIRS="icons lib settings fonts"
 
 for f in $SRC_FILES; do cp "$f" dist/chrome/; done

@@ -492,6 +492,7 @@ function paintPrefs() {
   // Backdrop corners mean nothing without a backdrop.
   const frameRow = shotSheetEl?.querySelector('[data-hi="frame"]');
   if (frameRow) frameRow.hidden = prefs.shotBackdrop === "none";
+  paintChips();
   paintShot();
   paintPayload();
   vigEl.dataset.placement = prefs.redlinePillPlacement;
@@ -644,6 +645,136 @@ function setPref(key, value) {
   announce(noteFor(key), announceText(key, value));
 }
 
+// ===== Narrow windows: value tags and the option sheet =====
+// Under ~520px (settings.css) each segmented row hides its segments and shows
+// a tag naming the current value; the tag opens a sheet listing the options.
+// Neither keeps any state of its own. The tag's text and the sheet's checked
+// option are read off the segments after paintPrefs has marked them, and a
+// choice clicks the segment it stands for — so it lands in the same click
+// handler, setPref or applyPreset, storage write and saved note included.
+
+// The same three glyphs content.js draws with: the edit panel's caret, and
+// ICONS.check and ICONS.close.
+const ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>';
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+
+const pickerEl = document.getElementById("sp-picker");
+const pickerTitleEl = document.getElementById("sp-picker-title");
+const pickerOptsEl = document.getElementById("sp-picker-opts");
+const pickerNoteEl = document.getElementById("sp-picker-note");
+const narrowQuery = window.matchMedia("(max-width: 519px)");
+let pickerChip = null;
+
+// The segment a value tag speaks for sits right before it.
+const segOf = (chip) => chip.previousElementSibling;
+// The chosen segment: a radio's aria-checked, or the preset row's
+// aria-pressed. The preset row can spell no preset at all once a field has
+// been moved by hand, and the tag says so rather than going blank.
+const chosenIn = (seg) => seg.querySelector('[aria-checked="true"], [aria-pressed="true"]');
+
+function buildChips() {
+  eachControl(".sp-spec > .sp-seg", (seg) => {
+    const labelId = seg.getAttribute("aria-labelledby");
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "sp-chip";
+    chip.id = `chip-${labelId}`;
+    chip.setAttribute("aria-haspopup", "dialog");
+    // Read as "Shadow, soft" — the row's label, then the value.
+    chip.setAttribute("aria-labelledby", `${labelId} ${chip.id}`);
+    chip.innerHTML = `<span class="sp-chip-v"></span>${ICON_CARET}`;
+    seg.after(chip);
+  });
+}
+
+function paintChips() {
+  eachControl(".sp-chip", (chip) => {
+    chip.querySelector(".sp-chip-v").textContent = chosenIn(segOf(chip))?.textContent.trim() || "custom";
+  });
+  // A second tab can change the value under an open sheet.
+  if (pickerEl?.open) paintPickerOptions();
+}
+
+function paintPickerOptions() {
+  const sources = Array.from(segOf(pickerChip).querySelectorAll("button"));
+  const chosen = chosenIn(segOf(pickerChip));
+  pickerOptsEl.querySelectorAll(".sp-picker-opt").forEach((opt, i) => {
+    const on = sources[i] === chosen;
+    opt.setAttribute("aria-checked", String(on));
+    opt.tabIndex = on || (!chosen && i === 0) ? 0 : -1;
+  });
+}
+
+function openPicker(chip) {
+  if (!pickerEl || pickerEl.open) return;
+  pickerChip = chip;
+  const seg = segOf(chip);
+  pickerTitleEl.textContent = document.getElementById(seg.getAttribute("aria-labelledby")).textContent;
+  pickerOptsEl.replaceChildren(...Array.from(seg.querySelectorAll("button"), (src, i) => {
+    const opt = document.createElement("button");
+    opt.type = "button";
+    opt.className = "sp-picker-opt";
+    opt.setAttribute("role", "radio");
+    opt.dataset.index = String(i);
+    opt.innerHTML = `<span></span>${ICON_CHECK}`;
+    opt.firstChild.textContent = src.textContent.trim();
+    return opt;
+  }));
+  // The row's caveat travels with it — Size's note on PNG limits, the Layers
+  // aid's explanation of its three options.
+  const note = chip.closest(".sp-spec").nextElementSibling;
+  const hasNote = Boolean(note?.matches(".sp-note, .sp-sub-note"));
+  pickerNoteEl.hidden = !hasNote;
+  pickerNoteEl.innerHTML = hasNote ? note.innerHTML : "";
+  paintPickerOptions();
+  pickerEl.showModal();
+  pickerOptsEl.querySelector('[tabindex="0"]')?.focus();
+}
+
+function closePicker() {
+  if (pickerEl?.open) pickerEl.close();
+}
+
+if (pickerEl) {
+  pickerOptsEl.addEventListener("click", (e) => {
+    const opt = e.target.closest(".sp-picker-opt");
+    if (!opt) return;
+    const src = segOf(pickerChip).querySelectorAll("button")[Number(opt.dataset.index)];
+    closePicker();
+    src?.click();
+  });
+  // Arrows walk the list without choosing — choosing closes the sheet, so it
+  // waits for Enter, Space or a tap.
+  pickerOptsEl.addEventListener("keydown", (e) => {
+    const opts = Array.from(pickerOptsEl.children);
+    const i = opts.indexOf(document.activeElement);
+    let next = -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (i + 1) % opts.length;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (i - 1 + opts.length) % opts.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = opts.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    opts.forEach((opt, j) => { opt.tabIndex = j === next ? 0 : -1; });
+    opts[next].focus();
+  });
+  document.getElementById("sp-picker-close").addEventListener("click", closePicker);
+  // The dialog has no padding of its own, so a click aimed at it rather than
+  // at something inside it landed on the dim behind.
+  pickerEl.addEventListener("click", (e) => {
+    if (e.target === pickerEl) closePicker();
+  });
+  // Esc is the dialog's own; however it closed, focus goes back to the tag.
+  pickerEl.addEventListener("close", () => {
+    pickerChip?.focus({ preventScroll: true });
+  });
+  // Widened past the tags while open: the sheet's tag is gone, so is the sheet.
+  narrowQuery.addEventListener("change", () => {
+    if (!narrowQuery.matches) closePicker();
+  });
+}
+
+buildChips();
 renderPills();
 
 pillHost.addEventListener("click", (e) => {
@@ -666,6 +797,8 @@ pillHost.addEventListener("keydown", (e) => {
 // The sheets: presets write a whole set, segmented radios write their value,
 // switches toggle.
 for (const host of controlHosts) host.addEventListener("click", (e) => {
+  const chip = e.target.closest(".sp-chip");
+  if (chip) return openPicker(chip);
   const preset = e.target.closest("[data-preset]");
   if (preset) return applyPreset(preset.dataset.preset);
   const radio = e.target.closest("[data-set]");

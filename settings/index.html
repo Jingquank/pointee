@@ -754,6 +754,24 @@
   </div>
 </main>
 
+<!--
+  The option sheet for narrow windows. Under ~520px each segmented row shows a
+  tag naming its value instead of the segments; the tag opens this. settings.js
+  fills it from the row's own segments and, on a choice, clicks the segment it
+  stands for — so it saves through the same handler the segments use.
+-->
+<dialog class="sp-picker" id="sp-picker" aria-labelledby="sp-picker-title">
+  <div class="sp-picker-in">
+    <div class="sp-picker-grab" aria-hidden="true"></div>
+    <div class="sp-picker-head">
+      <h2 class="sp-picker-title" id="sp-picker-title"></h2>
+      <button type="button" class="sp-picker-x" id="sp-picker-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <div class="sp-picker-opts" id="sp-picker-opts" role="radiogroup" aria-labelledby="sp-picker-title"></div>
+    <p class="sp-note" id="sp-picker-note" hidden></p>
+  </div>
+</dialog>
+
 <script src="../rail.js"></script>
 <script src="../shot.js"></script>
 <script src="settings.js"></script>

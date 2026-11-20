@@ -1,0 +1,507 @@
+/* Pointee — the screenshot studio.
+   Lives in a shadow root (content.js, openShotStudio), so nothing the page
+   styles can reach it: the host is pinned below with !important, which inside
+   a shadow tree outranks the page's own !important, and every token is
+   redefined on .pnt-ss-root from tokens.css at open time, so a page that
+   rewrites --pnt-* on <html> changes nothing in here. Loaded into the shadow
+   root as a constructed stylesheet; never injected into the page. */
+:host {
+  all: initial !important;
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+  pointer-events: auto !important;
+}
+
+/* ===== Screenshot Studio =====
+   The workbench a shot opens in (Pointee Screenshot Lab, idea 15): a dim over
+   the page, and one glass panel — preview on the left, Style, Frame and Export
+   on the right, the actions along the foot. The preview is a canvas the real
+   renderer (shot.js) draws; nothing here paints the shot itself. */
+.pnt-ss-root {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: var(--pnt-z-chrome);
+  font: var(--pnt-text-base)/var(--pnt-leading-base) var(--pnt-font);
+  color: var(--pnt-text-1);
+}
+
+.pnt-ss-root *,
+.pnt-ss-root *::before,
+.pnt-ss-root *::after {
+  box-sizing: border-box;
+}
+
+.pnt-ss-root .pnt-ss-dim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--pnt-surface-0) 55%, transparent);
+  opacity: 0;
+  transition: opacity var(--pnt-duration) var(--pnt-ease);
+}
+
+.pnt-ss-root .pnt-ss-panel {
+  position: absolute;
+  inset: max(24px, 4vh) max(24px, 4vw);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--pnt-glass);
+  -webkit-backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  backdrop-filter: blur(var(--pnt-blur)) saturate(1.15);
+  border: 1px solid var(--pnt-border-2);
+  border-radius: var(--pnt-radius-lg);
+  box-shadow: var(--pnt-shadow-2), var(--pnt-shadow-1);
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-slow) var(--pnt-ease);
+}
+
+.pnt-ss-root.pnt-ss-in .pnt-ss-dim,
+.pnt-ss-root.pnt-ss-in .pnt-ss-panel {
+  opacity: 1;
+  transform: none;
+}
+
+.pnt-ss-root button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font: inherit;
+}
+
+.pnt-ss-root button:focus-visible {
+  outline: var(--pnt-ring) solid var(--pnt-focus);
+  outline-offset: 2px;
+}
+
+.pnt-ss-root button:disabled {
+  opacity: var(--pnt-opacity-disabled);
+  cursor: default;
+}
+
+.pnt-ss-root svg {
+  width: var(--pnt-icon);
+  height: var(--pnt-icon);
+  display: block;
+}
+
+/* Head and foot */
+.pnt-ss-root .pnt-ss-head,
+.pnt-ss-root .pnt-ss-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--pnt-md);
+  padding: var(--pnt-md) var(--pnt-md) var(--pnt-md) var(--pnt-xl);
+  flex: none;
+}
+
+.pnt-ss-root .pnt-ss-head { border-bottom: 1px solid var(--pnt-border-1); }
+.pnt-ss-root .pnt-ss-foot { border-top: 1px solid var(--pnt-border-1); }
+
+.pnt-ss-root .pnt-ss-head b {
+  font-size: var(--pnt-text-lg);
+  font-weight: var(--pnt-weight-bold);
+}
+
+.pnt-ss-root .pnt-ss-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pnt-text-3);
+  font: var(--pnt-text-sm) var(--pnt-font-mono);
+  margin-right: auto;
+}
+
+.pnt-ss-root .pnt-ss-x {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--pnt-radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--pnt-text-3);
+}
+
+.pnt-ss-root .pnt-ss-x:hover {
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-1);
+}
+
+.pnt-ss-root .pnt-ss-status {
+  margin-right: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pnt-sm);
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+}
+
+.pnt-ss-root .pnt-ss-status.pnt-ss-ok { color: var(--pnt-ok); }
+.pnt-ss-root .pnt-ss-status.pnt-ss-warn { color: var(--pnt-danger); }
+.pnt-ss-root .pnt-ss-mark { flex: none; display: flex; }
+
+.pnt-ss-root .pnt-ss-file {
+  color: var(--pnt-text-3);
+  font: var(--pnt-text-sm) var(--pnt-font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+}
+
+.pnt-ss-root .pnt-ss-link {
+  color: var(--pnt-text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--pnt-border-3);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.pnt-ss-root .pnt-ss-link:hover { color: var(--pnt-text-1); }
+
+.pnt-ss-root .pnt-ss-btn {
+  height: 32px;
+  padding: 0 var(--pnt-btn-x);
+  border-radius: var(--pnt-radius-md);
+  border: 1px solid var(--pnt-border-3);
+  font-weight: var(--pnt-weight-medium);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: background var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+.pnt-ss-root .pnt-ss-btn svg { width: 16px; height: 16px; flex: none; }
+.pnt-ss-root .pnt-ss-btn:has(svg + span) { gap: var(--pnt-sm); }
+
+/* Download is the icon alone (fix round, Break 2); its label is aria-label and
+   title. Copy keeps its word beside the icon, at a width that holds "Copy
+   again" and "Copying…" without the row moving. */
+.pnt-ss-root .pnt-ss-icon { width: 32px; padding: 0; justify-content: center; }
+.pnt-ss-root .pnt-ss-copy { min-width: 112px; justify-content: center; }
+
+/* Copy on a page that blocks the clipboard: it reads off but stays focusable
+   and clickable, so a press explains itself instead of doing nothing. */
+.pnt-ss-root .pnt-ss-btn[aria-disabled="true"] { color: var(--pnt-text-3); }
+.pnt-ss-root .pnt-ss-btn[aria-disabled="true"]:hover { background: none; }
+
+.pnt-ss-root .pnt-ss-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--pnt-surface-2); }
+.pnt-ss-root .pnt-ss-btn:active:not(:disabled) { transform: scale(0.97); }
+
+.pnt-ss-root .pnt-ss-primary {
+  background: var(--pnt-accent);
+  border-color: var(--pnt-accent);
+  color: var(--pnt-on-accent);
+}
+
+.pnt-ss-root .pnt-ss-primary:hover:not(:disabled) { background: var(--pnt-accent-hover); }
+
+/* The panel takes focus when its bare parts are clicked, so focus never falls
+   out of the dialog to the page; it draws no ring of its own. */
+.pnt-ss-root .pnt-ss-panel:focus { outline: none; }
+
+/* The status line's own action ("Save a copy"), inline after its sentence. */
+.pnt-ss-root .pnt-ss-status .pnt-ss-link { margin-left: var(--pnt-xs); }
+
+/* Body: the preview takes what the side panel leaves. */
+.pnt-ss-root .pnt-ss-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+}
+
+/* ----- Preview ----- */
+.pnt-ss-root .pnt-ss-view {
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+  border-right: 1px solid var(--pnt-border-1);
+  background-color: var(--pnt-surface-1);
+  background-image: radial-gradient(color-mix(in srgb, var(--pnt-text-1) 9%, transparent) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+
+.pnt-ss-root .pnt-ss-view:focus-visible { box-shadow: inset 0 0 0 var(--pnt-ring) var(--pnt-focus); }
+.pnt-ss-root .pnt-ss-view.pnt-ss-pan { cursor: grab; }
+.pnt-ss-root .pnt-ss-view.pnt-ss-pan.pnt-ss-dragging { cursor: grabbing; }
+
+.pnt-ss-root .pnt-ss-cam {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.pnt-ss-root .pnt-ss-cam.pnt-ss-ease { transition: transform var(--pnt-duration-slow) var(--pnt-ease); }
+.pnt-ss-root .pnt-ss-cam canvas { display: block; }
+
+.pnt-ss-root .pnt-ss-dims {
+  position: absolute;
+  top: var(--pnt-md);
+  right: var(--pnt-md);
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.pnt-ss-root .pnt-ss-zoom,
+.pnt-ss-root .pnt-ss-mini {
+  position: absolute;
+  bottom: var(--pnt-md);
+  background: var(--pnt-glass);
+  -webkit-backdrop-filter: blur(var(--pnt-blur));
+  backdrop-filter: blur(var(--pnt-blur));
+  border: 1px solid var(--pnt-border-2);
+  box-shadow: var(--pnt-shadow-1);
+}
+
+/* Bottom-right, chosen in the fix round (Break 1): the studio opens under a
+   cursor still clicking the camera, which sits towards the top-left of the
+   preview — the controls go to the corner furthest from it, so a burst of
+   clicks lands on empty canvas, and empty canvas does nothing on a click. */
+.pnt-ss-root .pnt-ss-zoom {
+  right: var(--pnt-md);
+  display: flex;
+  align-items: center;
+  gap: var(--pnt-gap-tight);
+  padding: var(--pnt-gap-pair);
+  border-radius: var(--pnt-radius-md);
+}
+
+.pnt-ss-root .pnt-ss-zoom button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 var(--pnt-sm);
+  border-radius: var(--pnt-radius-sm);
+  display: grid;
+  place-items: center;
+  color: var(--pnt-text-2);
+  font-size: var(--pnt-text-sm);
+  font-weight: var(--pnt-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.pnt-ss-root .pnt-ss-zoom button:hover:not(:disabled) {
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-1);
+}
+
+.pnt-ss-root .pnt-ss-zoom button[aria-pressed="true"] { color: var(--pnt-accent); }
+.pnt-ss-root .pnt-ss-pct { min-width: 54px; }
+
+.pnt-ss-root .pnt-ss-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 var(--pnt-gap-tight);
+  background: var(--pnt-border-2);
+}
+
+/* Stacked over the zoom bar on the same edge: its height is a 28px button
+   inside the bar's padding and border. */
+.pnt-ss-root .pnt-ss-mini {
+  right: var(--pnt-md);
+  bottom: calc(var(--pnt-md) + 28px + 2 * var(--pnt-gap-pair) + 2px + var(--pnt-sm));
+  width: 120px;
+  padding: var(--pnt-sm) 0;
+  border-radius: var(--pnt-radius-sm);
+  cursor: pointer;
+}
+
+.pnt-ss-root .pnt-ss-mini[hidden] { display: none; }
+
+.pnt-ss-root .pnt-ss-ink {
+  position: relative;
+  margin: 0 auto;
+  border-radius: 3px;
+  background: var(--pnt-border-3);
+}
+
+.pnt-ss-root .pnt-ss-vw {
+  position: absolute;
+  border: 1.5px solid var(--pnt-accent);
+  border-radius: 2px;
+  background: var(--pnt-accent-soft);
+}
+
+/* ----- Side panel ----- */
+.pnt-ss-root .pnt-ss-side {
+  overflow-y: auto;
+  padding: var(--pnt-xs) var(--pnt-xl) var(--pnt-xl);
+}
+
+.pnt-ss-root .pnt-ss-group {
+  display: grid;
+  gap: var(--pnt-lg);
+  padding: var(--pnt-xl) 0;
+  border-bottom: 1px solid var(--pnt-border-1);
+}
+
+.pnt-ss-root .pnt-ss-group:last-child { border-bottom: 0; }
+
+.pnt-ss-root .pnt-ss-cat {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  font-size: var(--pnt-text-micro);
+  font-weight: var(--pnt-weight-medium);
+  letter-spacing: var(--pnt-tracking-caps);
+  text-transform: uppercase;
+  color: var(--pnt-text-3);
+}
+
+.pnt-ss-root .pnt-ss-field { display: grid; gap: var(--pnt-gap-section); }
+.pnt-ss-root .pnt-ss-field[hidden] { display: none; }
+
+.pnt-ss-root .pnt-ss-fh {
+  display: flex;
+  align-items: baseline;
+  gap: var(--pnt-gap-section);
+}
+
+.pnt-ss-root .pnt-ss-val {
+  margin-left: auto;
+  color: var(--pnt-text-3);
+  font-size: var(--pnt-text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pnt-ss-root .pnt-ss-note {
+  margin: 0;
+  font-size: var(--pnt-text-sm);
+  color: var(--pnt-text-3);
+}
+
+.pnt-ss-root .pnt-ss-note[hidden] { display: none; }
+.pnt-ss-root .pnt-ss-note.pnt-ss-warn { color: var(--pnt-danger); }
+
+/* The settings sheet's segmented control (settings.css .sp-seg), stretched to
+   the column so every option shares the width. */
+.pnt-ss-root .pnt-ss-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--pnt-surface-2);
+  border: 1px solid var(--pnt-border-1);
+  border-radius: var(--pnt-radius-md);
+}
+
+.pnt-ss-root .pnt-ss-seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: 5px var(--pnt-xs);
+  border-radius: var(--pnt-radius-sm);
+  color: var(--pnt-text-3);
+  font: var(--pnt-weight-medium) var(--pnt-text-sm)/var(--pnt-leading-tight) var(--pnt-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--pnt-duration) var(--pnt-ease), color var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+.pnt-ss-root .pnt-ss-seg button:hover:not(:disabled) { color: var(--pnt-text-1); }
+.pnt-ss-root .pnt-ss-seg button:active:not(:disabled) { transform: scale(0.97); }
+
+.pnt-ss-root .pnt-ss-seg button[aria-checked="true"] {
+  background: var(--pnt-surface-0);
+  color: var(--pnt-text-1);
+  box-shadow: 0 0 0 1px var(--pnt-border-2);
+}
+
+/* Backdrop tiles: each one the real renderer at thumbnail size. */
+.pnt-ss-root .pnt-ss-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--pnt-sm);
+}
+
+.pnt-ss-root .pnt-ss-tile {
+  display: grid;
+  gap: var(--pnt-gap-base);
+  justify-items: center;
+  color: var(--pnt-text-3);
+  font-size: var(--pnt-text-micro);
+  font-weight: var(--pnt-weight-medium);
+}
+
+.pnt-ss-root .pnt-ss-pic {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 108 / 96;
+  border-radius: var(--pnt-radius-sm);
+  box-shadow: 0 0 0 1px var(--pnt-border-2);
+  transition: box-shadow var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+.pnt-ss-root .pnt-ss-tile:hover .pnt-ss-pic { box-shadow: 0 0 0 1px var(--pnt-border-3); }
+.pnt-ss-root .pnt-ss-tile:active .pnt-ss-pic { transform: scale(0.97); }
+.pnt-ss-root .pnt-ss-tile:focus-visible { outline: none; }
+.pnt-ss-root .pnt-ss-tile:focus-visible .pnt-ss-pic { box-shadow: 0 0 0 var(--pnt-ring) var(--pnt-focus); }
+.pnt-ss-root .pnt-ss-tile[aria-checked="true"] { color: var(--pnt-text-1); }
+
+.pnt-ss-root .pnt-ss-tile[aria-checked="true"] .pnt-ss-pic {
+  box-shadow: 0 0 0 var(--pnt-ring) var(--pnt-accent), 0 0 0 4px var(--pnt-accent-soft);
+}
+
+/* Light or dark ground: one button whose icon is the state. */
+.pnt-ss-root .pnt-ss-tone {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--pnt-radius-sm);
+  border: 1px solid var(--pnt-border-1);
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-2);
+  display: grid;
+  place-items: center;
+  transition: color var(--pnt-duration) var(--pnt-ease), transform var(--pnt-duration-fast) ease;
+}
+
+.pnt-ss-root .pnt-ss-tone:hover { color: var(--pnt-text-1); border-color: var(--pnt-border-3); }
+.pnt-ss-root .pnt-ss-tone:active { transform: scale(0.94); }
+.pnt-ss-root .pnt-ss-tone svg:last-child { display: none; }
+.pnt-ss-root .pnt-ss-tone[aria-pressed="true"] svg:first-child { display: none; }
+.pnt-ss-root .pnt-ss-tone[aria-pressed="true"] svg:last-child { display: block; }
+
+/* A narrow window stacks the panel under the preview. */
+@media (max-width: 760px) {
+  .pnt-ss-root .pnt-ss-panel { inset: var(--pnt-md); }
+  .pnt-ss-root .pnt-ss-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 45%); }
+  .pnt-ss-root .pnt-ss-view { border-right: 0; border-bottom: 1px solid var(--pnt-border-1); }
+
+  /* Two rows (fix round, Break 4): the whole status sentence and the whole
+     file name on the first, broken only where the name has a separator; Set
+     as default and the two buttons on the second. */
+  .pnt-ss-root .pnt-ss-foot { flex-wrap: wrap; row-gap: var(--pnt-sm); padding-left: var(--pnt-md); }
+  .pnt-ss-root .pnt-ss-status { flex: 1 1 100%; margin-right: 0; align-items: flex-start; }
+  .pnt-ss-root .pnt-ss-status .pnt-ss-mark { margin-top: 2px; }
+  .pnt-ss-root .pnt-ss-file { flex: 1 1 100%; max-width: none; white-space: normal; overflow-wrap: anywhere; }
+  .pnt-ss-root .pnt-ss-foot > .pnt-ss-link { margin-right: auto; }
+}
+
+/* The studio arrives and zooms with an ease; stillness means it appears and
+   jumps instead. */
+@media (prefers-reduced-motion: reduce) {
+  .pnt-ss-root .pnt-ss-panel,
+  .pnt-ss-root .pnt-ss-dim,
+  .pnt-ss-root .pnt-ss-cam.pnt-ss-ease {
+    transition: none;
+  }
+}

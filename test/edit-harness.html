@@ -363,6 +363,8 @@
   window.chrome = {
     runtime: {
       onMessage: { addListener: (fn) => listeners.push(fn) },
+      // The studio fetches tokens.css and studio.css for its shadow root.
+      getURL: (path) => new URL("../" + path, location.href).href,
       sendMessage: (msg) => {
         if (msg && msg.type === "DEACTIVATE") setState(false);
         // Stands in for background.js's stylesheet fetcher. It cannot stand in

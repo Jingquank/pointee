@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pointee",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Point at any element, copy a source pointer for your coding agent, edit it live — styles, text, design tokens, even WebGL shaders.",
   "permissions": [
     "activeTab",
@@ -54,7 +54,9 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "fonts/*.woff2"
+        "fonts/*.woff2",
+        "tokens.css",
+        "studio.css"
       ],
       "matches": [
         "<all_urls>"

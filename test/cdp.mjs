@@ -1761,12 +1761,19 @@ try {
     const real = navigator.clipboard.write;
     navigator.clipboard.write = async (items) => { blob = await items[0].getType("image/png"); };
     const toast = () => { const t = document.getElementById("pnt-toast"); return t ? t.textContent.trim() : ""; };
+    // A click inside the burst window of the previous one is ignored by design.
+    await new Promise((r) => setTimeout(r, 450));
     btn.click();
     const t0 = Date.now();
     while (!blob && !toast().startsWith("Failed") && Date.now() - t0 < 15000) {
       await new Promise((r) => setTimeout(r, 50));
     }
     navigator.clipboard.write = real;
+    // The studio opens once its stylesheet is in, a beat after the clipboard.
+    const wantStudio = JSON.parse(localStorage.getItem("pnt-harness-store") || "{}").shotStudio === "on";
+    for (let i = 0; wantStudio && blob && !document.getElementById("pnt-shot-studio") && i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
     const bmp = blob ? await createImageBitmap(blob) : null;
     const shot = { toast: toast(), bytes: blob ? blob.size : 0, w: bmp ? bmp.width : 0, h: bmp ? bmp.height : 0 };
   `;
@@ -1812,51 +1819,94 @@ try {
   // the lens starts only once the capture has outlasted LOADING_DELAY, and the
   // check replaces it when the PNG lands. The capture is held open so the
   // middle state can be watched arriving rather than inferred.
-  await check("screenshot · the click flashes, the lens waits 150 ms, the check follows", async (fail) => {
+  await check("screenshot · the click flashes, the lens waits 150 ms, the stop button at 400 ms, the check follows", async (fail) => {
     const r = await evaluate(ws, `
       window.__t.select('[style*="brand-500"]');
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, 500));
       const btn = document.querySelector('#pnt-toolbar button[data-action="shot"]');
       if (btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
       btn.disabled = false;
       const realCapture = window.html2canvas;
       window.html2canvas = (node, opts) => realCapture(node, opts)
-        .then((canvas) => new Promise((r) => setTimeout(() => r(canvas), 500)));
+        .then((canvas) => new Promise((r) => setTimeout(() => r(canvas), 700)));
       let blob = null;
       const realWrite = navigator.clipboard.write;
       navigator.clipboard.write = async (items) => { blob = await items[0].getType("image/png"); };
       const state = () => ({
         flash: btn.classList.contains("pnt-flashing"),
         loading: btn.classList.contains("pnt-loading"),
+        stop: btn.classList.contains("pnt-stop"),
         done: btn.classList.contains("pnt-done"),
-        disabled: btn.disabled,
         label: (btn.querySelector("span") || {}).textContent,
       });
       btn.click();
       const at0 = state();
       await new Promise((r) => setTimeout(r, 60));
       const at60 = state();
+      // A second click inside the burst neither starts nor stops anything.
+      btn.click();
       await new Promise((r) => setTimeout(r, 240));
       const at300 = state();
       const lens = btn.querySelector("svg circle");
       const lensAnim = lens ? getComputedStyle(lens).animationName : "no lens";
+      await new Promise((r) => setTimeout(r, 250));
+      const at550 = state();
+      const hint = document.querySelector("#pnt-toolbar .pnt-hints").textContent;
       const t0 = Date.now();
       while (!blob && Date.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 50));
       await new Promise((r) => setTimeout(r, 40));
       const after = state();
+      const hintAfter = document.querySelector("#pnt-toolbar .pnt-hints").textContent;
       window.html2canvas = realCapture;
       navigator.clipboard.write = realWrite;
       window.__t.esc();
-      return { at0, at60, at300, lensAnim, after, got: Boolean(blob) };
+      return { at0, at60, at300, at550, hint, hintAfter, lensAnim, after, got: Boolean(blob) };
     `);
     if (!r.at0.flash) fail("the click did not flash");
-    if (!r.at0.disabled) fail("the button stayed enabled during the capture");
     if (r.at60.loading) fail("the lens started before 150 ms");
-    if (!r.at300.loading) fail("the lens had not started by 300 ms");
-    if (r.at300.label !== "Copying…") fail(`the label read ${JSON.stringify(r.at300.label)} while loading`);
+    if (!r.at300.loading || r.at300.stop) fail(`at 300 ms: lens=${r.at300.loading} stop=${r.at300.stop}`);
     if (r.lensAnim !== "pnt-shutter") fail(`the lens animates ${JSON.stringify(r.lensAnim)}`);
-    if (!r.got) fail("no PNG reached the clipboard");
-    if (!r.after.done || r.after.loading) fail(`after the capture: done=${r.after.done} loading=${r.after.loading}`);
+    if (!r.at550.stop || r.at550.label !== "Stop") fail(`at 550 ms the button was not a stop button: ${JSON.stringify(r.at550)}`);
+    if (!/esc\s*stop/.test(r.hint)) fail(`the hint read ${JSON.stringify(r.hint)} during the capture`);
+    if (!r.got) fail("no PNG reached the clipboard — the burst click stopped it?");
+    if (!r.after.done || r.after.stop) fail(`after the capture: done=${r.after.done} stop=${r.after.stop}`);
+    if (/stop/.test(r.hintAfter)) fail("the stop hint outlived the capture");
+  });
+
+  await check("screenshot · Escape during a slow capture stops it, and the clipboard is untouched", async (fail) => {
+    const r = await evaluate(ws, `
+      window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 500));
+      const btn = document.querySelector('#pnt-toolbar button[data-action="shot"]');
+      const realCapture = window.html2canvas;
+      window.html2canvas = (node, opts) => realCapture(node, opts)
+        .then((canvas) => new Promise((r) => setTimeout(() => r(canvas), 2500)));
+      let writes = 0, downloads = 0;
+      const realWrite = navigator.clipboard.write;
+      navigator.clipboard.write = async () => { writes++; };
+      const realClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (this.download) downloads++; else realClick.call(this); };
+      btn.click();
+      await new Promise((r) => setTimeout(r, 800));
+      const stopShown = btn.classList.contains("pnt-stop");
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      const backAtOnce = !btn.classList.contains("pnt-stop");
+      await new Promise((r) => setTimeout(r, 2600));
+      const toast = (document.getElementById("pnt-toast") || {}).textContent || "";
+      const stillSelected = Boolean(document.querySelector(".pnt-selected"));
+      const studio = Boolean(document.getElementById("pnt-shot-studio"));
+      window.html2canvas = realCapture;
+      navigator.clipboard.write = realWrite;
+      HTMLAnchorElement.prototype.click = realClick;
+      window.__t.esc();
+      return { stopShown, backAtOnce, writes, downloads, toast, stillSelected, studio };
+    `);
+    if (!r.stopShown) fail("the stop button never showed");
+    if (!r.backAtOnce) fail("the button did not answer the Escape at once");
+    if (r.writes || r.downloads) fail(`the stopped capture still wrote: ${r.writes} clipboard, ${r.downloads} downloads`);
+    if (!/stopped/i.test(r.toast)) fail(`the toast read ${JSON.stringify(r.toast)}`);
+    if (!r.stillSelected) fail("Escape took the selection with the capture");
+    if (r.studio) fail("the studio opened for a stopped capture");
   });
 
   // ===== Screenshot: framing, the studio, stitching =====
@@ -1906,7 +1956,7 @@ try {
       await new Promise((r) => setTimeout(r, 80));
       ${SHOOT}
       const out = {};
-      const st = document.getElementById("pnt-shot-studio");
+      const st = document.getElementById("pnt-shot-studio")?.shadowRoot;
       if (!st) return { missing: true };
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const q = (sel) => st.querySelector(sel);
@@ -1961,7 +2011,7 @@ try {
       tall.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 5 }));
       await new Promise((r) => setTimeout(r, 80));
       ${SHOOT}
-      const st = document.getElementById("pnt-shot-studio");
+      const st = document.getElementById("pnt-shot-studio")?.shadowRoot;
       const out = { h: shot.h };
       if (st) {
         out.x3 = st.querySelector('[data-key="shotScale"][data-val="3"]').disabled;
@@ -1977,6 +2027,254 @@ try {
     if (!r.h || r.h > 65535) fail(`the PNG is ${r.h}px tall`);
     if (r.x3 !== true) fail("3x stayed enabled for a 30,000px element");
     if (r.x2 !== "true") fail("the choice did not step down to 2x");
+  });
+
+  // ===== Studio: the fix round =====
+  // One check per Break the round fixed, each under the Break's own condition.
+
+  await check("studio · a hostile page cannot style it; Tab never leaves it; a click burst does not zoom", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 80));
+      const hostile = document.createElement("style");
+      hostile.textContent = "button { font-size: 40px !important; padding: 30px !important; background: hotpink !important; height: 90px !important; }" +
+        " * { font-family: serif !important; letter-spacing: 4px !important; } div { display: inline !important; }" +
+        " html { --pnt-accent: lime !important; --pnt-text-1: red !important; } svg { width: 80px !important; }";
+      ${SHOOT}
+      document.head.appendChild(hostile);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const host = document.getElementById("pnt-shot-studio");
+      const st = host && host.shadowRoot;
+      if (!st) { hostile.remove(); return { missing: true }; }
+      const q = (s) => st.querySelector(s);
+      const out = {};
+      const copy = q('[data-ss="copy"]'), dl = q('[data-ss="download"]');
+      const cs = getComputedStyle(copy);
+      out.copy = { h: copy.getBoundingClientRect().height, font: cs.fontFamily, bg: cs.backgroundColor, size: cs.fontSize };
+      out.dl = { text: dl.textContent.trim(), label: dl.getAttribute("aria-label"), w: dl.getBoundingClientRect().width, icon: Boolean(dl.querySelector("svg")) };
+      out.copyIcon = Boolean(copy.querySelector("svg")) && copy.textContent.trim() === "Copy";
+      out.panelFixed = getComputedStyle(host).position;
+      // The zoom bar sits in the preview's bottom-right corner.
+      const view = q(".pnt-ss-view").getBoundingClientRect(), zoom = q(".pnt-ss-zoom").getBoundingClientRect();
+      out.zoomRight = view.right - zoom.right;
+      out.zoomBottom = view.bottom - zoom.bottom;
+      out.zoomLeft = zoom.left - view.left;
+      // Six clicks, 60 ms apart, on empty canvas near the top-left: no zoom.
+      const pct0 = q('[data-z="toggle"]').textContent;
+      const v = q(".pnt-ss-view");
+      for (let i = 0; i < 6; i++) {
+        const o = { bubbles: true, composed: true, clientX: view.left + 60, clientY: view.top + 60, detail: (i % 2) + 1 };
+        v.dispatchEvent(new PointerEvent("pointerdown", { ...o, pointerId: 1, button: 0 }));
+        v.dispatchEvent(new PointerEvent("pointerup", { ...o, pointerId: 1, button: 0 }));
+        v.dispatchEvent(new MouseEvent("click", o));
+        if (i % 2) v.dispatchEvent(new MouseEvent("dblclick", o));
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      out.pct = [pct0, q('[data-z="toggle"]').textContent];
+      // Forty Tabs, then forty Shift+Tabs: focus never leaves the shadow root.
+      let outside = 0, wraps = 0, prev = null;
+      const first = () => st.activeElement;
+      for (let i = 0; i < 80; i++) {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: i >= 40, bubbles: true, cancelable: true }));
+        const a = st.activeElement;
+        if (!a || document.activeElement !== host) outside++;
+        if (prev && a && i < 40 && a.compareDocumentPosition(prev) & Node.DOCUMENT_POSITION_FOLLOWING) wraps++;
+        prev = a;
+      }
+      out.outside = outside;
+      out.wraps = wraps;
+      // Clicking the panel's bare header keeps focus inside too.
+      q(".pnt-ss-head").dispatchEvent(new MouseEvent("mousedown", { bubbles: true, composed: true }));
+      q(".pnt-ss-panel").focus();
+      out.afterBare = Boolean(st.activeElement);
+      hostile.remove();
+      window.__t.esc();
+      window.__t.esc();
+      return out;
+    `);
+    if (r.missing) return fail("the studio did not open (or not in a shadow root)");
+    if (Math.abs(r.copy.h - 32) > 1) fail(`the page's CSS resized Copy to ${r.copy.h}px`);
+    if (/serif/.test(r.copy.font) && !/sans/.test(r.copy.font)) fail(`the page's font reached Copy: ${r.copy.font}`);
+    if (/255, 105, 180|0, 255, 0/.test(r.copy.bg)) fail(`the page's colour reached Copy: ${r.copy.bg}`);
+    if (r.dl.text || r.dl.label !== "Download" || !r.dl.icon || Math.abs(r.dl.w - 32) > 1) fail(`Download is not a 32px icon button: ${JSON.stringify(r.dl)}`);
+    if (!r.copyIcon) fail("Copy is not icon + word");
+    if (r.panelFixed !== "fixed") fail(`the host is ${r.panelFixed}, not fixed`);
+    if (r.zoomRight > 24 || r.zoomBottom > 24 || r.zoomLeft < 100) fail(`the zoom bar is not bottom-right: ${r.zoomRight}/${r.zoomBottom}/${r.zoomLeft}`);
+    if (r.pct[0] !== r.pct[1]) fail(`a click burst on the canvas zoomed ${r.pct[0]} → ${r.pct[1]}`);
+    if (r.outside) fail(`focus left the studio on ${r.outside} of 80 Tabs`);
+    if (r.wraps < 2) fail(`40 Tabs wrapped ${r.wraps} times; the stops are not cycling`);
+    if (!r.afterBare) fail("focus fell out when the panel was clicked");
+  });
+
+  await check("studio · a blocked clipboard: Download leads, Copy saves nothing, a second Download asks first", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 500));
+      let downloads = 0;
+      const realWrite = navigator.clipboard.write;
+      navigator.clipboard.write = async () => { throw new DOMException("blocked", "NotAllowedError"); };
+      const realClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (this.download) downloads++; else realClick.call(this); };
+      document.querySelector('#pnt-toolbar button[data-action="shot"]').click();
+      for (let i = 0; i < 200 && !document.getElementById("pnt-shot-studio"); i++) await new Promise((r) => setTimeout(r, 50));
+      const st = document.getElementById("pnt-shot-studio")?.shadowRoot;
+      const out = { first: downloads };
+      if (st) {
+        const q = (s) => st.querySelector(s);
+        const copy = q('[data-ss="copy"]'), dl = q('[data-ss="download"]');
+        out.lead = dl.classList.contains("pnt-ss-primary") && !copy.classList.contains("pnt-ss-primary");
+        out.copyOff = copy.getAttribute("aria-disabled");
+        for (let i = 0; i < 3; i++) { copy.click(); await new Promise((r) => setTimeout(r, 120)); }
+        out.afterCopies = downloads;
+        out.copyStatus = q(".pnt-ss-status").textContent;
+        for (let i = 0; i < 4; i++) { dl.click(); await new Promise((r) => setTimeout(r, 60)); }
+        out.afterDownloads = downloads;
+        out.dlStatus = q(".pnt-ss-status").textContent;
+        const again = [...q(".pnt-ss-status").querySelectorAll("button")].find((b) => /Save a copy/.test(b.textContent));
+        if (again) { again.click(); await new Promise((r) => setTimeout(r, 120)); }
+        out.afterAgain = downloads;
+        q('[data-key="shotPadding"][data-val="l"]').click();
+        dl.click();
+        await new Promise((r) => setTimeout(r, 120));
+        out.afterEdit = downloads;
+      }
+      navigator.clipboard.write = realWrite;
+      HTMLAnchorElement.prototype.click = realClick;
+      window.__t.esc();
+      window.__t.esc();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return out;
+    `);
+    if (r.first !== 1) fail(`the blocked capture saved ${r.first} files, not 1`);
+    if (!r.lead) fail("Download did not take the lead");
+    if (r.copyOff !== "true") fail("Copy did not step back");
+    if (r.afterCopies !== 1) fail(`three Copy presses saved ${r.afterCopies - 1} more files`);
+    if (!/blocks the clipboard/.test(r.copyStatus || "")) fail(`Copy said ${JSON.stringify(r.copyStatus)}`);
+    if (r.afterDownloads !== 1) fail(`four Download presses of the saved picture saved ${r.afterDownloads - 1} more`);
+    if (!/Already saved/.test(r.dlStatus || "")) fail(`Download said ${JSON.stringify(r.dlStatus)}`);
+    if (r.afterAgain !== 2) fail("Save a copy did not save one");
+    if (r.afterEdit !== 3) fail("a Download after an edit did not save the new version");
+  });
+
+  await check("studio · at 375px the footer keeps the whole status and the whole file name", async (fail) => {
+    await send(ws, "Emulation.setDeviceMetricsOverride", { width: 375, height: 760, deviceScaleFactor: 1, mobile: false });
+    const r = await evaluate(ws, `
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      window.scrollTo(0, 0);
+      const el = window.__t.select('[style*="brand-500"]');
+      await new Promise((r) => setTimeout(r, 500));
+      const realWrite = navigator.clipboard.write;
+      navigator.clipboard.write = async () => { throw new DOMException("blocked", "NotAllowedError"); };
+      const realClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { if (!this.download) realClick.call(this); };
+      document.querySelector('#pnt-toolbar button[data-action="shot"]').click();
+      for (let i = 0; i < 200 && !document.getElementById("pnt-shot-studio"); i++) await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 300));
+      const st = document.getElementById("pnt-shot-studio")?.shadowRoot;
+      const out = {};
+      if (st) {
+        const q = (s) => st.querySelector(s);
+        const panel = q(".pnt-ss-panel").getBoundingClientRect();
+        const status = q(".pnt-ss-status"), file = q(".pnt-ss-file");
+        const lh = parseFloat(getComputedStyle(status).lineHeight) || 18;
+        out.statusW = status.getBoundingClientRect().width;
+        out.statusLines = Math.round(status.getBoundingClientRect().height / lh);
+        out.words = status.textContent.trim().split(/\\s+/).length;
+        out.fileShown = file.getBoundingClientRect().width > 0 && file.scrollWidth <= file.clientWidth + 1;
+        out.fileText = file.textContent;
+        out.buttonsIn = [...st.querySelectorAll(".pnt-ss-foot button")].every((b) => {
+          const r = b.getBoundingClientRect();
+          return r.left >= panel.left - 1 && r.right <= panel.right + 1;
+        });
+      }
+      navigator.clipboard.write = realWrite;
+      HTMLAnchorElement.prototype.click = realClick;
+      window.__t.esc();
+      window.__t.esc();
+      return out;
+    `);
+    await send(ws, "Emulation.clearDeviceMetricsOverride", {});
+    if (!r.statusW) return fail("the studio did not open");
+    if (r.statusW < 250) fail(`the status is squeezed to ${Math.round(r.statusW)}px`);
+    if (r.statusLines > r.words / 3) fail(`the status runs ${r.statusLines} lines for ${r.words} words`);
+    if (!r.fileShown) fail(`the file name is hidden or cut: ${JSON.stringify(r.fileText)}`);
+    if (!r.buttonsIn) fail("a footer button is outside the panel");
+  });
+
+  await check("screenshot · real pixels: a page scrolled during the stitch is retaken, not left blank", async (fail) => {
+    const r = await evaluate(ws, `
+      chrome.storage.local.set({ ...${SHOT_DEFAULTS}, shotStudio: "off" });
+      const tall = document.createElement("div");
+      tall.id = "stitch-scroll";
+      tall.style.cssText = "height:2600px;width:300px;margin:40px;background:#fff";
+      document.body.prepend(tall);
+      window.scrollTo(0, 0);
+      const rect = tall.getBoundingClientRect();
+      tall.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 100 }));
+      await new Promise((r) => setTimeout(r, 80));
+      const docTop = tall.getBoundingClientRect().top + scrollY;
+      const realSend = chrome.runtime.sendMessage;
+      const log = { grabs: 0, toasts: [] };
+      chrome.runtime.id = "harness";
+      chrome.runtime.sendMessage = async (msg) => {
+        if (!msg || msg.type !== "CAPTURE_VISIBLE") return realSend(msg);
+        log.grabs++;
+        const t = document.getElementById("pnt-toast");
+        if (t) log.toasts.push(t.textContent);
+        // The wheel turns while the second and third frames are taken.
+        if (log.grabs === 2 || log.grabs === 3) window.scrollBy(0, 350);
+        const dpr = devicePixelRatio, c = document.createElement("canvas");
+        c.width = Math.round(innerWidth * dpr); c.height = Math.round(innerHeight * dpr);
+        const ctx = c.getContext("2d");
+        for (let y = 0; y < innerHeight; y++) {
+          const Y = Math.round(scrollY + y);
+          ctx.fillStyle = "rgb(" + (Y % 256) + "," + Math.floor(Y / 256) + ",0)";
+          ctx.fillRect(0, Math.round(y * dpr), c.width, Math.ceil(dpr));
+        }
+        return { dataUrl: c.toDataURL("image/png") };
+      };
+      ${SHOOT.replace("15000", "60000")}
+      const pic = blob ? await createImageBitmap(blob) : null;
+      const rows = [];
+      if (pic) {
+        const c = document.createElement("canvas"); c.width = pic.width; c.height = pic.height;
+        const ctx = c.getContext("2d"); ctx.drawImage(pic, 0, 0);
+        const x = Math.round((24 + 150) * 2);
+        for (let y = 10; y < 2590; y += 37) {
+          const want = docTop + y;
+          if (want % 256 < 16 || want % 256 > 240) continue;
+          const d = ctx.getImageData(x, Math.round((24 + y) * 2) + 1, 1, 1).data;
+          rows.push([y, want, d[0] + 256 * d[1], d[3]]);
+        }
+      }
+      // A page that never stops moving: the capture gives up, the clipboard untouched.
+      const grabs1 = log.grabs;
+      chrome.runtime.sendMessage = async (msg) => {
+        if (!msg || msg.type !== "CAPTURE_VISIBLE") return realSend(msg);
+        window.scrollBy(0, 40);
+        const c = document.createElement("canvas"); c.width = innerWidth; c.height = innerHeight;
+        return { dataUrl: c.toDataURL("image/png") };
+      };
+      window.scrollTo(0, 0);
+      let giveUp;
+      {
+        ${SHOOT.replace("15000", "60000")}
+        giveUp = { toast: shot.toast, bytes: shot.bytes };
+      }
+      chrome.runtime.sendMessage = realSend;
+      delete chrome.runtime.id;
+      window.__t.esc();
+      tall.remove();
+      chrome.storage.local.set(${SHOT_DEFAULTS});
+      return { rows, grabs1, retook: log.toasts.some((t) => /retaking/.test(t)), giveUp };
+    `);
+    const off = r.rows.filter(([, want, got, a]) => a !== 255 || Math.abs(want - got) > 2);
+    if (!r.rows.length) fail("no rows could be read back");
+    else if (off.length) fail(`${off.length} of ${r.rows.length} rows are blank or off, first: element y ${off[0][0]} reads ${off[0][2]} (alpha ${off[0][3]}), wanted ${off[0][1]}`);
+    if (!r.retook) fail("no retake was announced");
+    if (!/kept scrolling/.test(r.giveUp.toast) || r.giveUp.bytes) fail(`a page that never held still gave ${JSON.stringify(r.giveUp)}`);
   });
 
   await check("screenshot · real pixels: a tall element is stitched, the overlay hidden, the page put back", async (fail) => {

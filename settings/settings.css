@@ -200,7 +200,10 @@ body {
    full-width toolbar — collapse to one column instead (where the full-width
    rail fits it again). */
 @container (max-width: 1020px) {
-  .sp-body { grid-template-columns: 1fr; }
+  /* minmax(0, …), not a bare 1fr: a bare 1fr has a min-content floor, so the
+     widest thing in either column (the vignette, a row of segments) set the
+     page's width and a narrow window scrolled sideways. */
+  .sp-body { grid-template-columns: minmax(0, 1fr); }
   .sp-nav {
     border-right: 0;
     border-bottom: 1px solid var(--sp-hairline);
@@ -556,6 +559,205 @@ body {
   opacity: var(--pnt-opacity-disabled);
   cursor: default;
 }
+
+/* ===== Narrow window: value tags and the option sheet =====
+   Under ~520px a row of segments no longer fits beside its label. Rather than
+   wrap or scroll, every row stays one line — label, leader, and a tag naming
+   the current value. Tapping the tag opens a sheet from the bottom listing the
+   options. settings.js builds one tag per segmented row and reads both the
+   tag and the sheet off the segments themselves, so choosing an option clicks
+   the segment it stands for — same handler, same storage, same saved note.
+   Switches stay switches; they already fit. */
+.sp-chip { display: none; }
+
+@container (max-width: 519px) {
+  .sp-spec > .sp-seg { display: none; }
+  .sp-spec > .sp-chip { display: inline-flex; }
+  .sp-spec { min-height: 40px; }
+  .sp-spec-leader { min-width: 12px; }
+  /* The nav's footer takes its own line under the links, flush left, rather
+     than hanging off the right edge of a wrapped row. */
+  .sp-footer { flex-basis: 100%; flex-wrap: wrap; margin: 0; padding: 0 var(--pnt-md); }
+}
+
+/* At any width, a long label wraps under itself instead of pushing its control
+   out of the card — "Paint that blends into the card" beside three segments
+   overran the Appearance card in the two-column layout. */
+.sp-spec-label { flex: 0 1 auto; min-width: 0; }
+
+.sp-chip {
+  flex: none;
+  align-items: center;
+  gap: var(--pnt-gap-tight);
+  min-height: 32px;
+  margin: 0;
+  padding: 0 var(--pnt-sm) 0 var(--pnt-md);
+  border: 1px solid var(--pnt-border-1);
+  border-radius: var(--pnt-radius-md);
+  background: var(--pnt-surface-2);
+  color: var(--pnt-text-1);
+  font: var(--pnt-weight-medium) var(--pnt-text-sm)/var(--pnt-leading-tight) var(--pnt-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--pnt-duration), transform var(--pnt-duration-fast) ease;
+}
+
+.sp-chip:active { transform: scale(0.97); }
+.sp-chip:hover { background: var(--pnt-border-1); }
+
+.sp-chip:focus-visible {
+  outline: 2px solid var(--pnt-focus);
+  outline-offset: 2px;
+}
+
+/* The edit panel's caret, turned to point down: this opens below. */
+.sp-chip svg {
+  width: 14px;
+  height: 14px;
+  color: var(--pnt-text-3);
+  transform: rotate(90deg);
+}
+
+/* The sheet is a native modal <dialog>: the top layer, a focus trap, an inert
+   page behind and Esc for free. It rises on the slow duration and leaves on
+   the exit one — a departure is always shorter than an arrival. The overlay
+   and display transitions keep it in the top layer until the slide-out has
+   finished. */
+.sp-picker {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-width: none;
+  max-height: 88dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pnt-radius-lg) var(--pnt-radius-lg) 0 0;
+  background: var(--sp-ground);
+  color: var(--pnt-text-1);
+  box-shadow: var(--pnt-shadow-2);
+  overflow: hidden;
+  translate: 0 100%;
+  transition: translate var(--pnt-duration-exit) var(--pnt-ease-exit),
+              overlay var(--pnt-duration-exit) allow-discrete,
+              display var(--pnt-duration-exit) allow-discrete;
+}
+
+.sp-picker[open] {
+  translate: 0 0;
+  transition-duration: var(--pnt-duration-slow);
+  transition-timing-function: var(--pnt-ease);
+}
+
+.sp-picker::backdrop {
+  background: var(--pnt-shade);
+  opacity: 0;
+  transition: opacity var(--pnt-duration-exit) var(--pnt-ease-exit),
+              overlay var(--pnt-duration-exit) allow-discrete,
+              display var(--pnt-duration-exit) allow-discrete;
+}
+
+.sp-picker[open]::backdrop {
+  opacity: 1;
+  transition-duration: var(--pnt-duration-slow);
+  transition-timing-function: var(--pnt-ease);
+}
+
+@starting-style {
+  .sp-picker[open] { translate: 0 100%; }
+  .sp-picker[open]::backdrop { opacity: 0; }
+}
+
+/* The dialog itself has no padding, so a click whose target is the dialog
+   landed on the backdrop — that is how settings.js tells a dim click apart. */
+.sp-picker-in {
+  max-height: inherit;
+  overflow: auto;
+  padding: var(--pnt-sm) var(--pnt-xl) max(var(--pnt-xl), env(safe-area-inset-bottom));
+}
+
+.sp-picker-grab {
+  width: 36px;
+  height: 4px;
+  margin: var(--pnt-gap-tight) auto var(--pnt-gap-section);
+  border-radius: 2px;
+  background: var(--pnt-border-2);
+}
+
+.sp-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pnt-gap-section);
+}
+
+.sp-picker-title {
+  margin: 0;
+  font-size: var(--pnt-text-lg);
+  font-weight: var(--pnt-weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.sp-picker-x {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 calc(-1 * var(--pnt-gap-section)) 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--pnt-radius-sm);
+  background: transparent;
+  color: var(--pnt-text-3);
+  cursor: pointer;
+}
+
+.sp-picker-x:hover { background: var(--pnt-surface-2); color: var(--pnt-text-1); }
+.sp-picker-x svg { width: 16px; height: 16px; }
+
+.sp-picker-opts {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--pnt-sm);
+}
+
+.sp-picker-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pnt-gap-section);
+  min-height: 48px;
+  margin: 0;
+  padding: 0 var(--pnt-xs);
+  border: 0;
+  border-bottom: 1px solid var(--pnt-border-1);
+  background: transparent;
+  color: var(--pnt-text-1);
+  font: var(--pnt-weight-regular) var(--pnt-text-lg)/var(--pnt-leading-tight) var(--pnt-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-picker-opt:last-child { border-bottom: 0; }
+.sp-picker-opt:hover { background: var(--pnt-surface-1); }
+.sp-picker-opt:active { background: var(--pnt-surface-2); }
+
+.sp-picker-x:focus-visible,
+.sp-picker-opt:focus-visible {
+  outline: 2px solid var(--pnt-focus);
+  outline-offset: -2px;
+}
+
+.sp-picker-opt svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--pnt-accent);
+  visibility: hidden;
+}
+
+.sp-picker-opt[aria-checked="true"] { font-weight: var(--pnt-weight-medium); }
+.sp-picker-opt[aria-checked="true"] svg { visibility: visible; }
 
 /* ===== Footer (in the sidebar) ===== */
 .sp-footer {
@@ -1163,6 +1365,9 @@ body {
   .sp-switch,
   .sp-switch::after,
   .sp-reset,
+  .sp-chip,
+  .sp-picker,
+  .sp-picker::backdrop,
   .sp-saved,
   .sp-nav,
   .sp-nav-list a,

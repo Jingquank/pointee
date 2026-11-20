@@ -192,6 +192,10 @@
   const migrateThemeId = (id) => LEGACY_THEME_IDS[id] || id;
   const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
   let themePref = DEFAULT_THEME;
+  // The screenshot studio's host and state; declared here because applyTheme
+  // reaches into it.
+  let studioEl = null;
+  let studio = null;
 
   // "system" has no palette of its own — it picks dark or light. Resolving here rather than duplicating every block inside an @media
   // query keeps tokens.css single-source, and lets the settings page preview
@@ -203,6 +207,8 @@
 
   function applyTheme() {
     document.documentElement.dataset.pntTheme = resolveTheme(themePref);
+    // The studio's tokens live inside its shadow root, keyed off its own root.
+    if (studio) studio.root.dataset.pntTheme = document.documentElement.dataset.pntTheme;
   }
 
   // Read a token from <html>. Only for the handful of values that genuinely have
@@ -8717,6 +8723,10 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         closeShotStudio();
+      } else if (e.key === "Tab" && studio) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        studio.tab(e.shiftKey ? -1 : 1);
       }
       return;
     }
@@ -8742,6 +8752,15 @@
         e.stopImmediatePropagation();
         onEditHistoryApplied(el);
       }
+      return;
+    }
+
+    // A capture in progress is the innermost layer: Escape stops it, and the
+    // clipboard keeps what it had. The selection stays for the next Escape.
+    if (e.key === "Escape" && shotRun) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      stopShot();
       return;
     }
 
@@ -9850,7 +9869,19 @@
     return found;
   }
 
-  async function captureByPixels(el, { isolate, onProgress }) {
+  // Every tile is checked: the scroll has to have landed where the capture
+  // put it, and the element must not move between the moment before the grab
+  // and the moment after it. A tile that fails was taken at a position nobody
+  // knows, so it is never drawn; it is scrolled back into place and taken
+  // again after the pass (fix round, Break 7: a wheel turned during a 27-tile
+  // stitch left a 1,700px blank band). Past this many tries for one tile the
+  // page is still moving, and the capture gives up rather than hand over a
+  // picture with a band missing.
+  const CAPTURE_CHECK_PASSES = 3;
+
+  class ShotStopped extends Error {}
+
+  async function captureByPixels(el, { isolate, onProgress, run }) {
     const html = document.documentElement;
     const scroller = captureScroller(el);
     const start = { left: scroller.scrollLeft, top: scroller.scrollTop };
@@ -9879,40 +9910,55 @@
       let out = null, ctx = null, srcScale = 1, ratio = 1;
       // What the tiles actually covered, in the output's device pixels.
       const covered = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-      let n = 0;
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-          n++;
-          // Bring this tile's corner of the element to the clip's corner. On
-          // an axis that needs no stitching, scroll only if the element is not
-          // already fully in view along it.
-          const r = el.getBoundingClientRect(), c = captureClip(el);
-          const along = (count, i, lo, hi, size, clo, chi, span) => {
-            if (count > 1) return lo + i * span - clo;
-            return lo >= clo && hi <= chi ? 0 : lo - clo;
-          };
-          const dx = along(nx, ix, r.left, r.right, W, c.left, c.right, vw);
-          const dy = along(ny, iy, r.top, r.bottom, H, c.top, c.bottom, vh);
-          if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-            scroller.scrollBy({ left: dx, top: dy, behavior: "instant" });
-            await waitFrames();
-            // Lazy images and scroll-linked effects get a beat to settle.
-            if (total > 1) await wait(80);
-          }
-          // Pinned things come back into every tile after the first, so they
-          // go whether or not the setting hides what is on top.
-          if (isolate) hide(findOccluders(el, false));
-          else if (n > 1) hide(findOccluders(el, true));
-          if (onProgress && total > 1) onProgress(n, total);
-          html.classList.add("pnt-grabbing");
+      const stopIfAsked = () => { if (run && run.stopped) throw new ShotStopped(); };
+      const same = (a, b) => Math.abs(a.left - b.left) < 0.5 && Math.abs(a.top - b.top) < 0.5;
+      let retakes = 0;
+
+      // One tile: bring the element's point (ex, ey) — CSS pixels from its
+      // top-left — to the clip's corner, take the frame, draw what of the
+      // element it shows. `stitchX`/`stitchY` say whether that axis is
+      // stitched; on an axis that is not, scroll only if the element is not
+      // already fully in view along it. Returns false when the page moved
+      // under the grab and nothing was drawn.
+      const takeTile = async (ex, ey, stitchX, stitchY, first, label) => {
+        stopIfAsked();
+        const r = el.getBoundingClientRect(), c = captureClip(el);
+        const along = (stitch, lo, hi, off, clo, chi) => {
+          if (stitch) return lo + off - clo;
+          return lo >= clo && hi <= chi ? 0 : lo - clo;
+        };
+        const dx = along(stitchX, r.left, r.right, ex, c.left, c.right);
+        const dy = along(stitchY, r.top, r.bottom, ey, c.top, c.bottom);
+        // Where the scroll will land, clamped the way the browser clamps it.
+        const clamp = (v, max) => Math.max(0, Math.min(max, v));
+        const want = {
+          left: clamp(scroller.scrollLeft + dx, scroller.scrollWidth - scroller.clientWidth),
+          top: clamp(scroller.scrollTop + dy, scroller.scrollHeight - scroller.clientHeight),
+        };
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          scroller.scrollBy({ left: dx, top: dy, behavior: "instant" });
           await waitFrames();
-          let img;
-          try {
-            img = await grabTab();
-          } finally {
-            html.classList.remove("pnt-grabbing");
-          }
-          if (!out) {
+          // Lazy images and scroll-linked effects get a beat to settle.
+          if (total > 1) await wait(80);
+        }
+        stopIfAsked();
+        const landed = Math.abs(scroller.scrollLeft - want.left) < 1.5 && Math.abs(scroller.scrollTop - want.top) < 1.5;
+        // Pinned things come back into every tile after the first, so they
+        // go whether or not the setting hides what is on top.
+        if (isolate) hide(findOccluders(el, false));
+        else if (!first) hide(findOccluders(el, true));
+        if (onProgress && total > 1) onProgress(label);
+        html.classList.add("pnt-grabbing");
+        await waitFrames();
+        const before = el.getBoundingClientRect();
+        let img;
+        try {
+          img = await grabTab();
+        } finally {
+          html.classList.remove("pnt-grabbing");
+        }
+        stopIfAsked();
+        if (!out) {
             ratio = img.width / window.innerWidth;
             srcScale = window.pntShot.fitScale(W, H, ratio);
             out = document.createElement("canvas");
@@ -9920,29 +9966,53 @@
             out.height = Math.max(1, Math.round(H * srcScale));
             ctx = out.getContext("2d");
           }
-          const now = el.getBoundingClientRect();
-          const v = intersectRect(now, captureClip(el));
-          if (v.width && v.height) {
-            // Both rectangles on whole device pixels. A crop at a fractional
-            // position comes out with a half-transparent last column.
-            const sx0 = Math.round(v.left * ratio), sy0 = Math.round(v.top * ratio);
-            const sx1 = Math.round((v.left + v.width) * ratio), sy1 = Math.round((v.top + v.height) * ratio);
-            const dx0 = Math.round((v.left - now.left) * srcScale), dy0 = Math.round((v.top - now.top) * srcScale);
-            const dx1 = Math.min(out.width, Math.round((v.left + v.width - now.left) * srcScale));
-            const dy1 = Math.min(out.height, Math.round((v.top + v.height - now.top) * srcScale));
-            if (sx1 > sx0 && sy1 > sy0 && dx1 > dx0 && dy1 > dy0) {
-              ctx.drawImage(img, sx0, sy0, sx1 - sx0, sy1 - sy0, dx0, dy0, dx1 - dx0, dy1 - dy0);
-              covered.x0 = Math.min(covered.x0, dx0);
-              covered.y0 = Math.min(covered.y0, dy0);
-              covered.x1 = Math.max(covered.x1, dx1);
-              covered.y1 = Math.max(covered.y1, dy1);
-            }
-          }
+        const now = el.getBoundingClientRect();
+        if (!landed || !same(before, now)) {
           img.close();
+          return false;
+        }
+        const v = intersectRect(now, captureClip(el));
+        if (v.width && v.height) {
+          // Both rectangles on whole device pixels. A crop at a fractional
+          // position comes out with a half-transparent last column.
+          const sx0 = Math.round(v.left * ratio), sy0 = Math.round(v.top * ratio);
+          const sx1 = Math.round((v.left + v.width) * ratio), sy1 = Math.round((v.top + v.height) * ratio);
+          const dx0 = Math.round((v.left - now.left) * srcScale), dy0 = Math.round((v.top - now.top) * srcScale);
+          const dx1 = Math.min(out.width, Math.round((v.left + v.width - now.left) * srcScale));
+          const dy1 = Math.min(out.height, Math.round((v.top + v.height - now.top) * srcScale));
+          if (sx1 > sx0 && sy1 > sy0 && dx1 > dx0 && dy1 > dy0) {
+            ctx.drawImage(img, sx0, sy0, sx1 - sx0, sy1 - sy0, dx0, dy0, dx1 - dx0, dy1 - dy0);
+            covered.x0 = Math.min(covered.x0, dx0);
+            covered.y0 = Math.min(covered.y0, dy0);
+            covered.x1 = Math.max(covered.x1, dx1);
+            covered.y1 = Math.max(covered.y1, dy1);
+          }
+        }
+        img.close();
+        return true;
+      };
+
+      let n = 0;
+      const missed = [];
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          n++;
+          const ok = await takeTile(ix * vw, iy * vh, nx > 1, ny > 1, n === 1, { n, total });
+          if (!ok) missed.push([ix * vw, iy * vh]);
         }
       }
+      for (const [ex, ey] of missed) {
+        for (let k = 1; ; k++) {
+          if (k > CAPTURE_CHECK_PASSES) {
+            throw new Error("The page kept scrolling during the capture. Nothing was copied");
+          }
+          retakes++;
+          if (await takeTile(ex, ey, nx > 1, ny > 1, false, { retake: retakes, total })) break;
+        }
+      }
+
       fillThinEdges(out, covered, srcScale);
-      return { canvas: out, srcScale, tiles: total };
+      return { canvas: out, srcScale, tiles: total, retakes };
     } finally {
       for (const node of hidden) node.removeAttribute("data-pnt-capture-hide");
       html.classList.remove("pnt-capturing", "pnt-grabbing");
@@ -9995,7 +10065,7 @@
   // The element, captured: its pixels and everything the presentation needs to
   // know about it. The shot is taken once; framing it differently never takes
   // it again.
-  async function captureElement(el, onProgress) {
+  async function captureElement(el, onProgress, run) {
     const rect = el.getBoundingClientRect();
     const meta = {
       w: rect.width,
@@ -10008,21 +10078,27 @@
     let raw = null;
     if (canGrabTab()) {
       try {
-        raw = await captureByPixels(el, { isolate: shotPrefs.shotIsolate === "on", onProgress });
+        raw = await captureByPixels(el, { isolate: shotPrefs.shotIsolate === "on", onProgress, run });
         meta.method = "pixels";
         // Real pixels are opaque wherever they were seen; anything left
         // transparent was never on screen, and the page was behind it.
         meta.fill = resolveBackgroundColor(el);
-      } catch {
-        raw = null; // a page the tab capture refuses still gets a picture
+      } catch (err) {
+        // A stop, or a page that would not hold still, is the answer; any
+        // other refusal from the tab capture still gets a picture.
+        if (err instanceof ShotStopped || /kept scrolling/.test(err.message)) throw err;
+        raw = null;
       }
     }
     if (!raw) {
+      if (run && run.stopped) throw new ShotStopped();
       raw = await captureByRender(el);
       meta.method = "render";
     }
+    if (run && run.stopped) throw new ShotStopped();
     meta.srcScale = raw.srcScale;
     meta.tiles = raw.tiles;
+    meta.retakes = raw.retakes || 0;
     meta.sample = window.pntShot.sample(raw.canvas);
     return { src: raw.canvas, meta };
   }
@@ -10048,7 +10124,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  async function writeImageToClipboard(blob, name) {
+  // `fallback: false` reports a refusal instead of saving the file — the
+  // studio's Copy, which has a Download of its own beside it.
+  async function writeImageToClipboard(blob, name, { fallback = true } = {}) {
     try {
       const item = new ClipboardItem({
         "image/png": Promise.resolve(blob),
@@ -10058,7 +10136,7 @@
     } catch {
       // Clipboard writes need a focused document and can be denied outright;
       // fall back to handing the user the file instead of losing the capture.
-      downloadBlob(blob, name);
+      if (fallback) downloadBlob(blob, name);
       return false;
     }
   }
@@ -10086,20 +10164,6 @@
     btnEl.classList.add("pnt-flashing");
     const ms = parseFloat(token("--pnt-duration-slow", "260")) || 260;
     setTimeout(() => btnEl.classList.remove("pnt-flashing"), ms + 40);
-  }
-
-  // Disables at once — a second click during a capture must not start a second
-  // capture — and shows the lens only if the work outlasts LOADING_DELAY.
-  // Returns the cancel, for the caller that finishes first.
-  function setButtonLoading(btnEl) {
-    if (!btnEl) return () => {};
-    btnEl.disabled = true;
-    const timer = setTimeout(() => {
-      btnEl.classList.add("pnt-loading");
-      const label = btnEl.querySelector("span");
-      if (label) label.textContent = "Copying…";
-    }, LOADING_DELAY);
-    return () => clearTimeout(timer);
   }
 
   // The restore is guarded on origHtml, so a caller that never recorded one
@@ -10148,34 +10212,120 @@
     }
   }
 
+  // ----- The Screenshot button as a stop button -----
+  // Chosen in the fix round (Break 3: Escape during a nine-second capture did
+  // nothing, and the clipboard was overwritten when it finished). Once a
+  // capture outlasts STOP_DELAY the camera becomes a stop button — the square,
+  // on the accent's soft wash, with a ring tracing the pill as the tiles come
+  // in — and the hint beside it says Escape stops. Stopping restores the page
+  // and leaves the clipboard exactly as it was.
+  const STOP_DELAY = 400;
+  // A click this soon after the previous one on the camera is part of the same
+  // burst: it neither starts a second capture nor stops the first. A
+  // deliberate stop comes after a pause.
+  const SHOT_BURST_MS = 400;
+  const STOP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2" ry="2"/></svg>';
+  // pathLength 1, so a dash offset of 1 − p shows p of the way round.
+  const STOP_RING = '<svg class="pnt-stop-ring" aria-hidden="true"><rect pathLength="1" stroke-dashoffset="1"/></svg>';
+  let shotRun = null;
+  let lastShotClickAt = 0;
+
+  function showStopButton(run) {
+    const btnEl = run.btnEl;
+    if (!btnEl || shotRun !== run) return;
+    run.stoppable = true;
+    btnEl.classList.remove("pnt-loading");
+    btnEl.classList.add("pnt-stop");
+    btnEl.innerHTML = STOP_ICON + STOP_RING + "<span>Stop</span>";
+    btnEl.dataset.tip = "Stop screenshot";
+    btnEl.setAttribute("aria-label", "Stop screenshot");
+    const hints = toolbarEl && toolbarEl.querySelector(".pnt-hints");
+    if (hints) hints.innerHTML = `<kbd class="pnt-kbd">esc</kbd><span>stop</span>`;
+    if (run.progress) setStopProgress(run, ...run.progress);
+  }
+
+  function setStopProgress(run, n, total) {
+    run.progress = [n, total];
+    const btnEl = run.btnEl;
+    if (!btnEl || !run.stoppable) return;
+    btnEl.classList.add("pnt-stop-known");
+    const ring = btnEl.querySelector(".pnt-stop-ring rect");
+    if (ring) ring.setAttribute("stroke-dashoffset", String(1 - Math.max(0, Math.min(1, n / total))));
+  }
+
+  function clearStopButton(btnEl) {
+    if (!btnEl) return;
+    btnEl.classList.remove("pnt-stop", "pnt-stop-known");
+    btnEl.dataset.tip = "Screenshot";
+    btnEl.setAttribute("aria-label", "Screenshot");
+    const hints = toolbarEl && toolbarEl.querySelector(".pnt-hints");
+    if (hints) hints.innerHTML = HINTS_HTML;
+  }
+
+  function stopShot() {
+    if (!shotRun) return;
+    shotRun.stopped = true;
+    // The button answers now; the capture notices at its next step.
+    clearStopButton(shotRun.btnEl);
+    resetButton(shotRun.btnEl);
+    if (shotRun.btnEl) shotRun.btnEl.disabled = true;
+  }
+
   async function copyScreenshot(el, btnEl) {
-    if (!el || shotBusy) return;
-    shotBusy = true;
+    const now = Date.now();
+    const burst = now - lastShotClickAt < SHOT_BURST_MS;
+    lastShotClickAt = now;
+    if (shotRun) {
+      if (!burst && shotRun.stoppable && !shotRun.stopped) stopShot();
+      return;
+    }
+    if (!el || burst) return;
+    const run = { btnEl, stopped: false, stoppable: false };
+    shotRun = run;
     flashButton(btnEl);
-    const cancelLoading = setButtonLoading(btnEl);
+    // The lens shows after LOADING_DELAY, the stop button after STOP_DELAY.
+    const lens = setTimeout(() => btnEl && btnEl.classList.add("pnt-loading"), LOADING_DELAY);
+    const stopTimer = setTimeout(() => showStopButton(run), STOP_DELAY);
     let stitched = false;
+    // The studio's stylesheet is fetched while the capture runs.
+    if (shotPrefs.shotStudio === "on") loadStudioSheet().catch(() => {});
+    const done = () => {
+      clearTimeout(lens);
+      clearTimeout(stopTimer);
+      clearStopButton(btnEl);
+      if (shotRun === run) shotRun = null;
+    };
     try {
-      const shot = await captureElement(el, (n, total) => {
+      const shot = await captureElement(el, (p) => {
         stitched = true;
-        showToast(`Capturing ${n} of ${total}`, false, { plain: true });
-      });
+        if (run.stopped) return;
+        if (p.retake) {
+          showToast(`Page moved — retaking ${p.retake === 1 ? "a part" : p.retake + " parts"} · esc to stop`, false, { plain: true });
+        } else {
+          setStopProgress(run, p.n, p.total);
+          showToast(`Capturing ${p.n} of ${p.total} · esc to stop`, false, { plain: true });
+        }
+      }, run);
+      // The last chance to stop: nothing has touched the clipboard yet.
+      if (run.stopped) throw new ShotStopped();
       // The clipboard gets the default look straight away — the studio is for
       // changing it, not a step between the button and the picture.
       const out = window.pntShot.compose(shot.src, shot.meta, shotPrefs);
       const name = shotFileName(shot.meta, out.scale);
-      const ok = await writeImageToClipboard(await canvasToBlob(out.canvas), name);
-      cancelLoading();
+      const blob = await canvasToBlob(out.canvas);
+      if (run.stopped) throw new ShotStopped();
+      const ok = await writeImageToClipboard(blob, name);
+      done();
       setButtonSuccess(btnEl, ok ? "Copied!" : "Downloaded!");
       if (stitched) removeToast();
       if (shotPrefs.shotStudio === "on" && probeActive && selectedElement === el) {
         openShotStudio(shot, { copied: ok, name });
       }
     } catch (err) {
-      cancelLoading();
+      done();
       resetButton(btnEl);
-      showToast("Failed to capture: " + err.message, true);
-    } finally {
-      shotBusy = false;
+      if (err instanceof ShotStopped) showToast("Screenshot stopped. Clipboard unchanged.");
+      else showToast("Failed to capture: " + err.message, true);
     }
   }
 
@@ -10212,10 +10362,6 @@
   // leave between the shot's edge and the preview's.
   const STUDIO_VIEW_MARGIN = 40;
 
-  let shotBusy = false;
-  let studioEl = null;
-  let studio = null;
-
   function studioIcon(body) {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
   }
@@ -10226,19 +10372,76 @@
     minus: studioIcon('<line x1="5" y1="12" x2="19" y2="12"/>'),
     plus: studioIcon('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'),
     fit: studioIcon('<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>'),
+    download: studioIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
+    copy: studioIcon('<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
   };
 
-  function openShotStudio(shot, init = {}) {
+  // ----- The studio's own stylesheet -----
+  // The studio lives in a shadow root (fix round, Break 6: a page's
+  // `button { … !important }` and `* { font-size }` reached straight into it).
+  // Nothing the page styles crosses that boundary, but nor do tokens.css and
+  // content.css, which ride along as content-script CSS on the document. So
+  // the shadow root gets one constructed sheet: tokens.css re-scoped from
+  // :root to the studio's own root — every token defined inside, where the
+  // page cannot rewrite it — and studio.css. Fetched once, while the first
+  // capture runs.
+  let studioSheet = null;
+  function extensionURL(path) {
+    try {
+      const url = chrome.runtime?.getURL?.(path);
+      if (url) return url;
+    } catch { /* outside an extension */ }
+    return path;
+  }
+  function loadStudioSheet() {
+    if (!studioSheet) {
+      studioSheet = (async () => {
+        const text = async (path) => {
+          const res = await fetch(extensionURL(path));
+          if (!res.ok) throw new Error(path + " " + res.status);
+          return res.text();
+        };
+        const [tokens, css] = await Promise.all([text("tokens.css"), text("studio.css")]);
+        const scoped = tokens
+          .replace(/@font-face\s*\{[^}]*\}/g, "")
+          .replace(/:root\b/g, ".pnt-ss-root")
+          .replace(/\[data-pnt-theme="([^"]+)"\]/g, '.pnt-ss-root[data-pnt-theme="$1"]');
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(scoped + "\n" + css);
+        return sheet;
+      })();
+      studioSheet.catch(() => { studioSheet = null; });
+    }
+    return studioSheet;
+  }
+
+  async function openShotStudio(shot, init = {}) {
     closeShotStudio();
+    let sheet;
+    try {
+      sheet = await loadStudioSheet();
+    } catch (err) {
+      showToast("The studio could not open: " + err.message, true);
+      return;
+    }
+    // A second shot, or the selection going, while the sheet loaded.
+    closeShotStudio();
+    if (!probeActive) return;
     const prefs = {};
     for (const key of STUDIO_LOOK_KEYS) prefs[key] = shotPrefs[key];
     const P = window.pntShot;
 
     studioEl = document.createElement("div");
     studioEl.id = "pnt-shot-studio";
-    studioEl.innerHTML = `
+    const shadow = studioEl.attachShadow({ mode: "open" });
+    shadow.adoptedStyleSheets = [sheet];
+    const root = document.createElement("div");
+    root.className = "pnt-ss-root";
+    root.dataset.pntTheme = document.documentElement.dataset.pntTheme || "dark";
+    shadow.appendChild(root);
+    root.innerHTML = `
       <div class="pnt-ss-dim"></div>
-      <div class="pnt-ss-panel" role="dialog" aria-modal="true" aria-labelledby="pnt-ss-title">
+      <div class="pnt-ss-panel" role="dialog" aria-modal="true" aria-labelledby="pnt-ss-title" tabindex="-1">
         <header class="pnt-ss-head">
           <b id="pnt-ss-title">Screenshot</b>
           <span class="pnt-ss-name"></span>
@@ -10263,26 +10466,33 @@
           <span class="pnt-ss-status" role="status" aria-live="polite"></span>
           <span class="pnt-ss-file"></span>
           <button type="button" class="pnt-ss-link" data-ss="default">Set as default</button>
-          <button type="button" class="pnt-ss-btn" data-ss="download">Download</button>
-          <button type="button" class="pnt-ss-btn pnt-ss-primary" data-ss="copy">Copy</button>
+          <button type="button" class="pnt-ss-btn pnt-ss-icon" data-ss="download" aria-label="Download" title="Download">${STUDIO_ICONS.download}</button>
+          <button type="button" class="pnt-ss-btn pnt-ss-primary pnt-ss-copy" data-ss="copy">${STUDIO_ICONS.copy}<span>Copy</span></button>
         </footer>
       </div>`;
     document.documentElement.appendChild(studioEl);
 
-    const $ = (sel) => studioEl.querySelector(sel);
+    const $ = (sel) => root.querySelector(sel);
     const view = $(".pnt-ss-view"), cam = $(".pnt-ss-cam"), side = $(".pnt-ss-side");
-    const statusEl = $(".pnt-ss-status"), copyBtn = $('[data-ss="copy"]');
+    const statusEl = $(".pnt-ss-status"), copyBtn = $('[data-ss="copy"]'), dlBtn = $('[data-ss="download"]');
+    const copyLabel = copyBtn.querySelector("span");
     const preview = document.createElement("canvas");
     cam.appendChild(preview);
     $(".pnt-ss-name").textContent = shot.meta.label;
 
     studio = {
-      shot, prefs, preview, view, cam,
+      shot, prefs, preview, view, cam, root,
       z: 1, x: 0, y: 0, mode: "fit", W: 1, H: 1, exportScale: 1, dirty: false, drag: null,
+      // The clipboard refused this page; Download leads until a Copy gets through.
+      blocked: false,
+      // The name last saved, while nothing has changed since: a second
+      // Download of the same picture asks instead of saving it twice.
+      savedAs: null,
     };
     const S = studio;
 
-    function status(text, kind) {
+    // `action` is an optional [label, fn] drawn as a link after the sentence.
+    function status(text, kind, action) {
       statusEl.className = "pnt-ss-status" + (kind ? " pnt-ss-" + kind : "");
       statusEl.replaceChildren();
       if (kind === "ok" || kind === "warn") {
@@ -10291,7 +10501,59 @@
         mark.innerHTML = kind === "ok" ? ICONS.check : ICONS.alert;
         statusEl.appendChild(mark);
       }
-      statusEl.append(text);
+      const words = document.createElement("span");
+      words.textContent = text;
+      statusEl.appendChild(words);
+      if (action) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "pnt-ss-link";
+        b.textContent = action[0];
+        b.addEventListener("click", action[1]);
+        words.append(" ", b);
+      }
+    }
+
+    // ----- Focus stays inside (fix round, Break 5) -----
+    // Tab and Shift+Tab walk the dialog's own stops and wrap at both ends;
+    // onKeyDown hands every Tab here while the studio is up. A stop that is
+    // disabled, hidden, or the unchecked half of a radio group is skipped.
+    const stops = () => [...root.querySelectorAll("button, [tabindex]")].filter((n) =>
+      n.tabIndex >= 0 && !n.disabled && n.getClientRects().length && !n.closest("[hidden]"));
+    S.tab = (dir) => {
+      const list = stops();
+      if (!list.length) return;
+      const i = list.indexOf(shadow.activeElement);
+      const next = i < 0 ? (dir > 0 ? list[0] : list[list.length - 1]) : list[(i + dir + list.length) % list.length];
+      next.focus();
+    };
+    // Focus that lands outside anyway — a page script, a click through to the
+    // page — comes back to the panel.
+    S.onFocusIn = (e) => {
+      if (studioEl && e.target !== studioEl) $(".pnt-ss-panel").focus({ preventScroll: true });
+    };
+    document.addEventListener("focusin", S.onFocusIn, true);
+    // A focused button that gets disabled drops focus to the page; the panel
+    // takes it instead.
+    const disable = (btn, on) => {
+      if (on && shadow.activeElement === btn) $(".pnt-ss-panel").focus({ preventScroll: true });
+      btn.disabled = on;
+    };
+
+    // ----- Download and Copy (fix round, Break 2) -----
+    // Copy leads while the clipboard works. On a page that blocks it, Download
+    // takes the filled style and Copy steps back, still pressable so it can
+    // say why, and never saving a file of its own.
+    function roles() {
+      dlBtn.classList.toggle("pnt-ss-primary", S.blocked);
+      copyBtn.classList.toggle("pnt-ss-primary", !S.blocked);
+      if (S.blocked) {
+        copyBtn.setAttribute("aria-disabled", "true");
+        copyBtn.title = "This site blocks the clipboard. Use Download.";
+      } else {
+        copyBtn.removeAttribute("aria-disabled");
+        copyBtn.title = "";
+      }
     }
 
     // ----- Side panel -----
@@ -10441,7 +10703,14 @@
         `About ${mb < 1 ? Math.max(1, Math.round(mb * 1024)) + " KB" : mb.toFixed(1) + " MB"} PNG` +
         (shot.meta.tiles > 1 ? `, stitched from ${shot.meta.tiles} captures.` : ".") +
         (shot.meta.method === "render" ? " Redrawn from the page, not captured from the screen." : "");
-      $(".pnt-ss-file").textContent = shotFileName(shot.meta, S.exportScale);
+      // Breakable only after a separator, so a narrow footer wraps the name
+      // between its words rather than through them.
+      const fileEl = $(".pnt-ss-file");
+      fileEl.replaceChildren();
+      for (const part of shotFileName(shot.meta, S.exportScale).split(/(?<=[-@.])/)) {
+        if (fileEl.firstChild) fileEl.appendChild(document.createElement("wbr"));
+        fileEl.append(part);
+      }
       $(".pnt-ss-dims").textContent = `${Math.round(shot.meta.w).toLocaleString()} × ${Math.round(shot.meta.h).toLocaleString()} px element`;
     }
     function val(key, text) {
@@ -10558,12 +10827,10 @@
     const endDrag = () => { S.drag = null; view.classList.remove("pnt-ss-dragging"); };
     view.addEventListener("pointerup", endDrag);
     view.addEventListener("pointercancel", endDrag);
-    view.addEventListener("dblclick", (e) => {
-      if (e.target.closest(".pnt-ss-zoom, .pnt-ss-mini")) return;
-      const r = view.getBoundingClientRect();
-      if (S.mode === "fit") zoomAt(1, e.clientX - r.left, e.clientY - r.top, true);
-      else fitView(true);
-    });
+    // No double-click zoom (fix round, Break 1): the studio opens under a
+    // cursor that may still be clicking the camera, and a burst of clicks on
+    // the canvas must leave the preview at Fit. The zoom bar, the keys and a
+    // pinch zoom.
     view.addEventListener("keydown", (e) => {
       const k = e.key;
       if (k === "+" || k === "=") zoomStep(1);
@@ -10594,9 +10861,10 @@
       paintTiles();
       render();
       S.dirty = true;
-      copyBtn.disabled = false;
-      copyBtn.textContent = "Copy";
-      status("Edited. Copy again to update the clipboard.");
+      S.savedAs = null;
+      disable(copyBtn, false);
+      copyLabel.textContent = "Copy";
+      status(S.blocked ? "Edited. Download to save this version." : "Edited. Copy again to update the clipboard.");
     }
     side.addEventListener("click", (e) => {
       const b = e.target.closest("[data-key], [data-ss='tone']");
@@ -10625,33 +10893,53 @@
       const out = P.compose(shot.src, shot.meta, prefs);
       return { blob: await canvasToBlob(out.canvas), name: shotFileName(shot.meta, out.scale), out };
     }
+    let copying = false;
     copyBtn.addEventListener("click", async () => {
-      copyBtn.disabled = true;
+      if (copying) return;
+      copying = true;
+      copyLabel.textContent = "Copying…";
       status("Copying…");
       try {
         const { blob, name, out } = await exportBlob();
-        const ok = await writeImageToClipboard(blob, name);
-        S.dirty = false;
-        if (ok) status(`Copied ${out.canvas.width.toLocaleString()} × ${out.canvas.height.toLocaleString()} px`, "ok");
-        else {
-          status(`The clipboard was blocked, so it was saved to Downloads as ${name}.`, "warn");
-          copyBtn.disabled = false;
-          copyBtn.textContent = "Copy again";
+        // Asked every time — the site may have let go — but a refusal here
+        // never saves a file: Download is right beside it.
+        const ok = await writeImageToClipboard(blob, name, { fallback: false });
+        if (!studio) return;
+        if (ok) {
+          S.dirty = false;
+          S.blocked = false;
+          roles();
+          copyLabel.textContent = "Copy";
+          disable(copyBtn, true);
+          status(`Copied ${out.canvas.width.toLocaleString()} × ${out.canvas.height.toLocaleString()} px`, "ok");
+        } else {
+          S.blocked = true;
+          roles();
+          copyLabel.textContent = "Copy";
+          status("This site blocks the clipboard, so Copy can't work here. Download saves the picture.", "warn");
         }
       } catch (err) {
-        copyBtn.disabled = false;
+        copyLabel.textContent = "Copy";
         status("Failed to copy: " + err.message, "warn");
+      } finally {
+        copying = false;
       }
     });
-    $('[data-ss="download"]').addEventListener("click", async () => {
+    async function download(again) {
+      if (S.savedAs && !again) {
+        status(`Already saved as ${S.savedAs}. Not saved twice.`, "ok", ["Save a copy", () => download(true)]);
+        return;
+      }
       try {
         const { blob, name } = await exportBlob();
         downloadBlob(blob, name);
+        S.savedAs = name;
         status(`Saved ${name} to Downloads`, "ok");
       } catch (err) {
         status("Failed to save: " + err.message, "warn");
       }
-    });
+    }
+    dlBtn.addEventListener("click", () => download(false));
     $('[data-ss="default"]').addEventListener("click", () => {
       const payload = {};
       for (const key of STUDIO_LOOK_KEYS) payload[key] = prefs[key];
@@ -10667,15 +10955,21 @@
     paintControls();
     paintTiles();
     if (init.copied === false) {
-      status(`The clipboard was blocked, so it was saved to Downloads as ${init.name}.`, "warn");
-      copyBtn.textContent = "Copy again";
+      // The capture already fell back to a file: that file is the one saved.
+      S.blocked = true;
+      S.savedAs = init.name;
+      status(`This site blocks the clipboard, so it was saved to Downloads as ${init.name}.`, "warn");
     } else {
-      status("Copied to clipboard", "ok");
+      const retook = shot.meta.retakes
+        ? ` — retook ${shot.meta.retakes === 1 ? "a part" : shot.meta.retakes + " parts"} after the page moved`
+        : "";
+      status("Copied to clipboard" + retook, "ok");
       copyBtn.disabled = true;
     }
+    roles();
     requestAnimationFrame(() => {
       if (!studioEl) return;
-      studioEl.classList.add("pnt-ss-in");
+      root.classList.add("pnt-ss-in");
       render();
       view.focus({ preventScroll: true });
     });
@@ -10689,6 +10983,7 @@
   function closeShotStudio() {
     if (!studioEl) return;
     if (studio && studio.resize) studio.resize.disconnect();
+    if (studio && studio.onFocusIn) document.removeEventListener("focusin", studio.onFocusIn, true);
     studioEl.remove();
     studioEl = null;
     studio = null;
@@ -10696,7 +10991,7 @@
 
   // ===== Toast =====
   // A toast is a sentence and a mark: a check for success, an alert for an
-  // error. The loading affordance lives on the button itself (setButtonLoading),
+  // error. The loading affordance lives on the button itself (copyScreenshot),
   // so there is no loading toast.
   // `plain` drops the mark, for a progress line that is neither.
   function showToast(message, isError = false, { plain = false } = {}) {
